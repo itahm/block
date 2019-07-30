@@ -1,0 +1,70 @@
+package com.itahm.block.command;
+
+import org.snmp4j.smi.OID;
+import org.snmp4j.smi.Variable;
+
+import com.itahm.block.SMTP;
+import com.itahm.json.JSONObject;
+import com.itahm.util.Listener;
+
+public interface Commander {
+	public boolean action01(long id, long rtt);
+	public void action02(long id, int status);
+	public void action03(long id, OID oid, OID index, Variable variable);
+	public boolean addAccount(String username, JSONObject account);
+	public void addEventListener(Listener listener);
+	public boolean addIcon(String type, JSONObject icon);
+	public boolean addLine(String id, JSONObject line);
+	public JSONObject addNode(JSONObject base);
+	public boolean addProfile(String name, JSONObject profile);
+	public boolean addUser(String name, JSONObject user);
+	public JSONObject getAccountByUsername(String username);
+	public JSONObject getAccountAll();
+	public void getDataByID(String id); // TODO resource, index, summary, start, end
+	public JSONObject getConfigAll();
+	public JSONObject getEventByID(long id);
+	public JSONObject getEventByDate(long date);
+	public JSONObject getIconAll();
+	public JSONObject getIconByType(String type);
+	public JSONObject getInformation();
+	public JSONObject getLineAll();
+	public JSONObject getNodeAll();
+	public JSONObject getNodeByID(String id, boolean snmp);
+	public JSONObject getPositionByName(String name);
+	public JSONObject getProfileAll();
+	public JSONObject getProfileByName(String name);
+	public JSONObject getSettingAll();
+	public String getSettingByKey(String key);
+	public void getTop(JSONObject key);
+	public JSONObject getTopByResource(String resource);
+	public JSONObject getTraffic(JSONObject traffic);
+	public JSONObject getUserAll();
+	public boolean setAccount(String username, JSONObject account);
+	public boolean setCleaner(int store);
+	public boolean setCritical(String id, JSONObject critical);
+	public boolean setHealth(int health);
+	public boolean setIcon(String id, JSONObject icon);
+	public boolean setInterfaceUpDown(String id, JSONObject updown);
+	public boolean setLine(String id, JSONObject line);
+	public boolean setMonitor(long id, String protocol);
+	public boolean setNode(long id, JSONObject base);
+	public boolean setPosition(String name, JSONObject position);
+	public boolean setProfile(String id, JSONObject profile);
+	public boolean setSaveInterval(int interval);
+	public boolean setSetting(String key, String value);
+	public SMTP setSMTPServer(JSONObject smtp);
+	public boolean setSNMPInterval(long interval);
+	public boolean setSpeed(String id, JSONObject critical);
+	public boolean setStoreDate(int period);
+	public boolean setTopCount(int count);
+	public boolean setUser(String id, JSONObject user);
+	public boolean removeAccount(String username);
+	public void removeEventListener(Listener listener);
+	public boolean removeIcon(String type);
+	public boolean removeLine(String id);
+	public boolean removeMonitor(long id);
+	public boolean removeNode(long id);
+	public boolean removeProfile(String name);
+	public boolean removeUser(String name);
+	public boolean search(String network, int mask);
+}
