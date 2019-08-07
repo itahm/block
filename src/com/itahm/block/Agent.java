@@ -9,6 +9,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.sql.Types;
 import java.util.ArrayList;
 import java.util.Calendar;
 
@@ -18,6 +19,7 @@ import org.snmp4j.smi.Variable;
 import com.itahm.block.NodeManager;
 import com.itahm.block.SMTP;
 import com.itahm.block.command.Commander;
+import com.itahm.json.JSONException;
 import com.itahm.json.JSONObject;
 import com.itahm.util.Listener;
 import com.itahm.util.Network;
@@ -33,7 +35,8 @@ public class Agent implements Commander, Closeable, Listener {
 	private final int DEF_RETRY = 2;
 	
 	private Boolean isClosed = false;
-	private long lastNodeID = 1;
+	private Long lastNodeID = Long.valueOf(1);
+	private Long lastLinkID = Long.valueOf(1);
 	private final Memory memory = new Memory();
 	private final String db;
 	private final ArrayList<Listener> listenerList = new ArrayList<>();
@@ -43,11 +46,13 @@ public class Agent implements Commander, Closeable, Listener {
 		try {
 			Class.forName("org.sqlite.JDBC");
 		} catch (ClassNotFoundException cnfe) {
-			System.out.print(cnfe);
+			System.err.print(cnfe);
 		}	
 	}
 	
 	public Agent(Path root) throws IOException, SQLException {
+		System.out.println("Commander: Agent v1.0");
+		
 		nodeManager = new NodeManager(this);
 		
 		db = "jdbc:sqlite:"+ root.resolve("sql.db").toString();
@@ -78,7 +83,7 @@ public class Agent implements Commander, Closeable, Listener {
 					}
 				}
 				
-				if (memory.getAccountSize() == 0) {
+				if (memory.getAccount().length() == 0) {
 					try (Statement stmt = c.createStatement()) {
 						stmt.executeUpdate("INSERT INTO ACCOUNT "+
 							" (username, password)"+
@@ -133,18 +138,19 @@ public class Agent implements Commander, Closeable, Listener {
 				 */
 				try (Statement stmt = c.createStatement()) {
 					stmt.executeUpdate("CREATE TABLE IF NOT EXISTS event"+
-						" (id INTEGER PRIMARY KEY AUTOINCREMENT"+
-						", date INTEGER NOT NULL"+
+						" (id INTEGER NOT NULL"+
+						", timestamp INTEGER NOT NULL"+
 						", origin TEXT NOT NULL"+
 						", status INTEGER NOT NULL"+
 						", message TEXT NOT NULL"+
 						", ip TEXT DEFAULT NULL"+
-						", index INTEGER NOT NULL"+
-						", name TEXT NOT NULL);");
+						", name TEXT NOT NULL"+
+						", date INTEGER NOT NULL"+
+						", PRIMARY KEY(id));");
 				}
 				
 				try (Statement stmt = c.createStatement()) {
-					stmt.executeUpdate("CREATE INDEX IF NOT EXISTS index ON event (index);");
+					stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx ON event (date);");
 				}
 				/**END**/
 				
@@ -154,7 +160,7 @@ public class Agent implements Commander, Closeable, Listener {
 				try (Statement stmt = c.createStatement()) {
 					stmt.executeUpdate("CREATE TABLE IF NOT EXISTS icon"+
 						" (type TEXT NOT NULL"+
-						", group TEXT NOT NULL"+
+						", _group TEXT NOT NULL"+
 						", alt TEXT NOT NULL"+
 						", src TEXT NOT NULL"+
 						", disabled TEXT NOT NULL"+
@@ -166,7 +172,7 @@ public class Agent implements Commander, Closeable, Listener {
 				}
 				
 				try (Statement stmt = c.createStatement()) {
-					try (ResultSet rs = stmt.executeQuery("SELECT * FROM icon")) {
+					try (ResultSet rs = stmt.executeQuery("SELECT type, _group, alt, src, disabled, unit, color, texture, top FROM icon")) {
 						while (rs.next()) {
 							memory.addIcon(rs.getString(1), new JSONObject()
 								.put("type", rs.getString(1))
@@ -184,19 +190,29 @@ public class Agent implements Commander, Closeable, Listener {
 				/**END**/
 				
 				/**
-				 * LINE
+				 * LINK
 				 */
 				try (Statement stmt = c.createStatement()) {
-					stmt.executeUpdate("CREATE TABLE IF NOT EXISTS line"+
-						" (name TEXT NOT NULL DEFAULT 'position'"+ // TODO line 테이블에 맞게
-						", position TEXT NOT NULL DEFAULT '{}'"+
-						", PRIMARY KEY(name));");
+					stmt.executeUpdate("CREATE TABLE IF NOT EXISTS link"+
+						" (id INTEGER PRIMARY KEY"+
+						", node_from INTEGER NOT NULL"+
+						", node_to  INTEGER NOT NULL"+
+						", index_from INTEGER DEFAULT NULL"+
+						", index_to INTEGER DEFAULT  NULL"+
+						", extra TEXT DEFAULT NULL, UNIQUE(node_from, index_from), UNIQUE(node_to, index_to));");
 				}
 				
 				try (Statement stmt = c.createStatement()) {
-					try (ResultSet rs = stmt.executeQuery("SELECT * FROM line")) {
+					try (ResultSet rs = stmt.executeQuery("SELECT id, node_from, node_to, index_from, index_to FROM link ORDER BY id;")) {
 						while (rs.next()) {
-							memory.addLine(rs.getString(1), new JSONObject(rs.getString(2)));
+							memory.setLink(rs.getLong(2), rs.getLong(3), rs.getLong(1), new JSONObject()
+								.put("id", rs.getLong(1))
+								.put("nodeFrom", rs.getLong(2))
+								.put("nodeTo", rs.getLong(3))
+								.put("indexFrom", rs.getLong(4))
+								.put("indexTo", rs.getLong(5)));
+							
+							lastLinkID = rs.getLong(1);
 						}
 					}
 				}
@@ -219,8 +235,9 @@ public class Agent implements Commander, Closeable, Listener {
 					try (ResultSet rs = stmt.executeQuery("SELECT id, ip, protocol, status, snmp FROM monitor")) {
 						while (rs.next()) {
 							memory.addMonitor(rs.getLong(1), new JSONObject()
-								.put("id", rs.getInt(2))
-								.put("ip", rs.getString(3))
+								.put("id", rs.getLong(1))
+								.put("ip", rs.getString(2))
+								.put("protocol", rs.getString(3))
 								.put("status", rs.getInt(4) == 0? false: true)
 								.put("snmp", rs.getInt(5)));
 						}
@@ -242,18 +259,18 @@ public class Agent implements Commander, Closeable, Listener {
 				}
 				
 				try (Statement stmt = c.createStatement()) {
-					stmt.executeUpdate("CREATE INDEX IF NOT EXISTS index ON node (ip);");
+					stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx ON node (ip);");
 				}
 				
 				try (Statement stmt = c.createStatement()) {
-					try (ResultSet rs = stmt.executeQuery("SELECT id, name, type, ip, label FROM node")) {
+					try (ResultSet rs = stmt.executeQuery("SELECT id, name, type, ip, label FROM node ORDER BY id")) {
 						while (rs.next()) {
 							memory.addNode(rs.getLong(1), new JSONObject()
 								.put("id", rs.getLong(1))
 								.put("name", rs.getString(2) == null? JSONObject.NULL: rs.getString(2))
-								.put("type", rs.getString(3) == null? JSONObject.NULL: rs.getString(2))
-								.put("ip", rs.getString(4) == null? JSONObject.NULL: rs.getString(2))
-								.put("label", rs.getString(5) == null? JSONObject.NULL: rs.getString(2)));
+								.put("type", rs.getString(3) == null? JSONObject.NULL: rs.getString(3))
+								.put("ip", rs.getString(4) == null? JSONObject.NULL: rs.getString(4))
+								.put("label", rs.getString(5) == null? JSONObject.NULL: rs.getString(5)));
 							
 							lastNodeID = rs.getLong(1);
 						}
@@ -261,6 +278,46 @@ public class Agent implements Commander, Closeable, Listener {
 				}
 				/**END**/
 
+				/**
+				 * PATH
+				 */
+				try (Statement stmt = c.createStatement()) {
+					stmt.executeUpdate("CREATE TABLE IF NOT EXISTS path"+
+						" (node_from INTEGER NOT NULL"+
+						", node_to INTEGER NOT NULL"+
+						", type TEXT DEFAULT NULL"+
+						", color TEXT DEFAULT NULL"+
+						", size INTEGER DEFAULT 0"+
+						", UNIQUE(node_from, node_to));");
+				}
+				
+				try (Statement stmt = c.createStatement()) {
+					try (ResultSet rs = stmt.executeQuery("SELECT node_from, node_to, type, color, size FROM path;")) {
+						JSONObject path;
+						
+						while (rs.next()) {
+							path = new JSONObject()
+								.put("nodeFrom", rs.getLong(1))
+								.put("nodeTo", rs.getLong(2));
+							
+							if (rs.getString(3) != null) {
+								path.put("type", rs.getString(3));
+							}
+							
+							if (rs.getString(4) != null) {
+								path.put("color", rs.getString(4));
+							}
+							
+							if (rs.getInt(5) > 0) {
+								path.put("size", rs.getInt(5));
+							}
+							
+							memory.setPath(rs.getLong(1), rs.getLong(2), path);
+						}
+					}
+				}
+				/**END**/
+				
 				/**
 				 * POSITION
 				 */
@@ -280,7 +337,7 @@ public class Agent implements Commander, Closeable, Listener {
 				}
 				
 				
-				if (memory.getPositionSize() == 0) {
+				if (memory.getPosition().length() == 0) {
 					try (Statement stmt = c.createStatement()) {
 						stmt.executeUpdate("INSERT INTO position DEFAULT VALUES;");
 						
@@ -326,11 +383,11 @@ public class Agent implements Commander, Closeable, Listener {
 					}
 				}	
 				
-				if (memory.getProfileSize() == 0) {
+				if (memory.getProfile().length() == 0) {
 					try (Statement stmt = c.createStatement()) {
 						stmt.executeUpdate("INSERT INTO profile"+
 							" (name, protocol, port, version, security)"+
-							" VALUES('public', 'udp', 161, 'v2c', public);");
+							" VALUES('public', 'udp', 161, 'v2c', 'public');");
 					}
 					
 					memory.addProfile("public", new JSONObject()
@@ -348,17 +405,38 @@ public class Agent implements Commander, Closeable, Listener {
 				try (Statement stmt = c.createStatement()) {
 					stmt.executeUpdate("CREATE TABLE IF NOT EXISTS resource"+
 						" (id INTEGER NOT NULL"+
-						"' oid TEXT NOT NULL"+
-						"' index TEXT  NOT NULL"+
-						"' value TEXT  NOT NULL"+
-						"' timestamp INTEGER DEFAULT NULL"+
-						"' date INTEGER NOT NULL);");
+						", oid TEXT NOT NULL"+
+						", _index TEXT  NOT NULL"+
+						", value TEXT  NOT NULL"+
+						", timestamp INTEGER DEFAULT NULL"+
+						", date INTEGER NOT NULL);");
 				}
 				
 				try (Statement stmt = c.createStatement()) {
-					stmt.executeUpdate("CREATE INDEX IF NOT EXISTS index ON resource (date);");
+					stmt.executeUpdate("CREATE INDEX IF NOT EXISTS idx ON resource (date);");
 				}
 				
+				/**END**/
+				
+				/**
+				 * SETTING
+				 */
+				try (Statement stmt = c.createStatement()) {
+					stmt.executeUpdate("CREATE TABLE IF NOT EXISTS setting"+
+						" (key TEXT PRIMARY KEY"+
+						", value TEXT DEFAULT NULL);");
+				}
+				
+				try (Statement stmt = c.createStatement()) {
+					try (ResultSet rs = stmt.executeQuery("SELECT key, value FROM setting where value IS NOT NULL;")) {
+						while (rs.next()) {
+							memory.setSetting(rs.getString(1), rs.getString(2));
+						}
+					}
+				}
+				
+				initProfile(this.memory.getProfile());
+				initMonitor(this.memory.getMonitor());
 				/**END**/
 				
 				/**
@@ -383,10 +461,11 @@ public class Agent implements Commander, Closeable, Listener {
 					}
 				}
 				
-				initProfile(this.memory.getProfileAll());
-				initMonitor(this.memory.getMonitorAll());
-				
+				initProfile(this.memory.getProfile());
+				initMonitor(this.memory.getMonitor());
 				/**END**/
+				
+				c.commit();
 			} catch(Exception e) {
 				c.rollback();
 				
@@ -410,7 +489,7 @@ public class Agent implements Commander, Closeable, Listener {
 		boolean status = rtt > -1;
 		
 		if (monitor.getBoolean("status") != status) {
-			try(Connection c = DriverManager.getConnection(db)) {
+			try(Connection c = DriverManager.getConnection(this.db)) {
 				try  {
 					c.setAutoCommit(false);
 					
@@ -447,7 +526,7 @@ public class Agent implements Commander, Closeable, Listener {
 			return;
 		}
 		
-		try(Connection c = DriverManager.getConnection(db)) {
+		try(Connection c = DriverManager.getConnection(this.db)) {
 			try  {
 				c.setAutoCommit(false);
 				
@@ -474,13 +553,13 @@ public class Agent implements Commander, Closeable, Listener {
 	
 	@Override
 	public synchronized void action03(long id, OID oid, OID index, Variable variable) {
-		try(Connection c = DriverManager.getConnection(db)) {
+		try(Connection c = DriverManager.getConnection(this.db)) {
 			Calendar calendar = Calendar.getInstance();
 			
 			try  {
 				c.setAutoCommit(false);
 				
-				try (PreparedStatement pstmt = c.prepareStatement("INSERT INTO resource (id, oid, index, value, timestamp, date)"+
+				try (PreparedStatement pstmt = c.prepareStatement("INSERT INTO resource (id, oid, _index, value, timestamp, date)"+
 					" VALUES (?, ?, ?, ?, ?);")) {
 					pstmt.setLong(1, id);
 					pstmt.setString(2, oid.toDottedString());
@@ -505,7 +584,7 @@ public class Agent implements Commander, Closeable, Listener {
 	
 	@Override
 	public boolean addAccount(String username, JSONObject account) {
-		try(Connection c = DriverManager.getConnection(db)) {
+		try(Connection c = DriverManager.getConnection(this.db)) {
 			try  {
 				c.setAutoCommit(false);
 				
@@ -542,22 +621,22 @@ public class Agent implements Commander, Closeable, Listener {
 	
 	@Override
 	public boolean addIcon(String type, JSONObject icon) {
-		try (Connection c = DriverManager.getConnection(db)) {
+		try (Connection c = DriverManager.getConnection(this.db)) {
 			c.setAutoCommit(false);
 			
 			try {
 				try (PreparedStatement pstmt = c.prepareStatement("INSERT INTO icon"+
-					" (type, group, alt, src, diasabled, unit, color, texture, top)"+
+					" (type, _group, alt, src, diasabled, unit, color, texture, top)"+
 					" VALUES (?, ?, ?, ?, ?, ?, ?, ?);")) {
 					pstmt.setString(1, icon.getString("type"));
-					pstmt.setString(1, icon.getString("group"));
-					pstmt.setString(1, icon.getString("alt"));
-					pstmt.setString(1, icon.getString("src"));
-					pstmt.setString(1, icon.getString("disabled"));
-					pstmt.setInt(1, icon.getInt("unit"));
-					pstmt.setString(1, icon.getString("color"));
-					pstmt.setString(1, icon.getString("texture"));
-					pstmt.setString(1, icon.getString("top"));
+					pstmt.setString(2, icon.getString("group"));
+					pstmt.setString(3, icon.getString("alt"));
+					pstmt.setString(4, icon.getString("src"));
+					pstmt.setString(5, icon.getString("disabled"));
+					pstmt.setInt(6, icon.getInt("unit"));
+					pstmt.setString(7, icon.getString("color"));
+					pstmt.setString(8, icon.getString("texture"));
+					pstmt.setString(9, icon.getString("top"));
 					
 					pstmt.executeUpdate();
 				}
@@ -580,25 +659,58 @@ public class Agent implements Commander, Closeable, Listener {
 	}
 
 	@Override
-	public boolean addLine(String id, JSONObject line) {
+	public boolean addLink(long nodeFrom, long nodeTo) {
+		if (nodeFrom >= nodeTo) {
+			return false;
+		}
+		
+		try (Connection c = DriverManager.getConnection(this.db)) {
+			long id;
+			
+			synchronized(this.lastLinkID) {
+				id = this.lastLinkID++;
+			}
+			
+			try (PreparedStatement pstmt = c.prepareStatement("INSERT INTO link (id, node_from, node_to) values (?, ?, ?);")) {
+				pstmt.setLong(1, id);
+				pstmt.setLong(2, nodeFrom);
+				pstmt.setLong(3, nodeTo);
+				
+				pstmt.executeUpdate();
+			}
+			
+			this.memory.setLink(nodeFrom, nodeTo, id, new JSONObject().put("id", id));
+		} catch (SQLException sqle) {
+			System.err.print(sqle);
+			
+			return false;
+		}
+		
 		return true;
 	}
-
+	
 	@Override
 	public JSONObject addNode(JSONObject node) {
-		long id = this.lastNodeID++;
 		
-		try (Connection c = DriverManager.getConnection(db)) {
+		
+		try (Connection c = DriverManager.getConnection(this.db)) {
 			c.setAutoCommit(false);
 			
 			try {
-				try (PreparedStatement pstmt = c.prepareStatement("insert into node (id, name, type, ip, label) values (?, ?, ?, ?, ?);")) {
+				long id;
+				
+				synchronized(this.lastNodeID) {
+					id = this.lastNodeID++;
+				}
+				
+				try (PreparedStatement pstmt = c.prepareStatement("INSERT INTO node (id, name, type, ip, label) values (?, ?, ?, ?, ?);")) {
 					pstmt.setLong(1, id);
 					pstmt.setString(2, node.has("name")? node.getString("name"): null);
 					pstmt.setString(3, node.has("type")? node.getString("type"): null);
 					pstmt.setString(4, node.has("ip")? node.getString("ip"): null);
 					pstmt.setString(5, node.has("label")? node.getString("label"): null);			
 					
+					pstmt.executeUpdate();
 				}
 				
 				node.put("id", id);
@@ -615,7 +727,7 @@ public class Agent implements Commander, Closeable, Listener {
 			}
 			
 		} catch (SQLException sqle) {
-			System.out.print(sqle);
+			System.err.print(sqle);
 			
 			return null;
 		}
@@ -623,9 +735,34 @@ public class Agent implements Commander, Closeable, Listener {
 		return node;
 	}
 
+
+	@Override
+	public boolean addPath(long nodeFrom, long nodeTo) {
+		if (nodeFrom >= nodeTo) {
+			return false;
+		}
+		
+		try (Connection c = DriverManager.getConnection(this.db)) {
+			try (PreparedStatement pstmt = c.prepareStatement("INSERT INTO path (node_from, node_to) values (?, ?);")) {
+				pstmt.setLong(1, nodeFrom);
+				pstmt.setLong(2, nodeTo);
+				
+				pstmt.executeUpdate();
+			}
+			
+			this.memory.setPath(nodeFrom, nodeTo, new JSONObject());
+		} catch (SQLException sqle) {
+			System.err.print(sqle);
+			
+			return false;
+		}
+		
+		return true;
+	}
+	
 	@Override
 	public boolean addProfile(String name, JSONObject profile) {
-		try (Connection c = DriverManager.getConnection(db)) {
+		try (Connection c = DriverManager.getConnection(this.db)) {
 			c.setAutoCommit(false);
 			
 			try {
@@ -664,7 +801,7 @@ public class Agent implements Commander, Closeable, Listener {
 	
 	@Override
 	public boolean addUser(String name, JSONObject user) {
-		try (Connection c = DriverManager.getConnection(db)) {
+		try (Connection c = DriverManager.getConnection(this.db)) {
 			c.setAutoCommit(false);
 		
 			try {
@@ -704,58 +841,59 @@ public class Agent implements Commander, Closeable, Listener {
 	}
 	
 	@Override
-	public JSONObject getAccountAll() {
-		return this.memory.getAccountAll();
+	public JSONObject getAccount() {
+		return this.memory.getAccount();
 	}
 
 	@Override
 	public JSONObject getAccountByUsername(String username) {
-		return this.memory.getAccountByUsername(username);
+		try {
+			return this.memory.getAccount().getJSONObject(username);
+		}
+		catch (JSONException jsone) {}
+		
+		return null;
 	}
 
 	@Override
-	public JSONObject getConfigAll() {
-		return this.memory.getConfigAll();
+	public JSONObject getConfig() {
+		return this.memory.getConfig();
 	}
 
 	@Override
-	public JSONObject getIconAll() {
-		return this.memory.getIconAll();
-	}
-
-	@Override
-	public JSONObject getLineAll() {
-		return this.memory.getLineAll();
-	}
-
-	@Override
-	public JSONObject getNodeAll() {
-		return this.memory.getNodeAll();
-	}
-
-	@Override
-	public JSONObject getProfileAll() {
-		return this.memory.getProfileAll();
+	public JSONObject getConfigByKey(String key) {
+		try {
+			return new JSONObject()
+				.put(key, this.memory.getConfig().getString(key));
+		}
+		catch (JSONException jsone) {}
+		
+		return null;
 	}
 	
 	@Override
-	public JSONObject getProfileByName(String name) {
-		return this.memory.getProfileByName(name);
+	public JSONObject getIcon() {
+		return this.memory.getIcon();
+	}
+
+	@Override
+	public JSONObject getLink() {
+		return this.memory.getLink();
+	}
+
+	@Override
+	public JSONObject getLinkByNodeID(long nodeFrom, long nodeTo) {
+		try {
+			return this.memory.getLink().getJSONObject(Long.toString(nodeFrom)).getJSONObject(Long.toString(nodeTo));
+		}
+		catch (JSONException jsone) {}
+		
+		return null;
 	}
 	
-	@Override
-	public JSONObject getSettingAll() {
-		return this.memory.getSettingAll();
-	}
-
-	@Override
-	public JSONObject getUserAll() {
-		return this.memory.getUserAll();
-	}
-
 	@Override
 	public JSONObject getEventByID(long id) {
-		try (Connection c = DriverManager.getConnection(db)) {
+		try (Connection c = DriverManager.getConnection(this.db)) {
 			try (PreparedStatement pstmt = c.prepareStatement("SELECT date, origin, status, message, ip, name FROM event WHERE id=?;")) {
 				pstmt.setLong(1, id);
 				
@@ -772,22 +910,22 @@ public class Agent implements Commander, Closeable, Listener {
 				}
 			} 
 		} catch (SQLException sqle) {
-			System.out.print(sqle);
+			System.err.print(sqle);
 		}
 		
 		return null;
 	}
 
 	@Override
-	public void getDataByID(String id) {
+	public void getDataByID(long id) {
 		// TODO Auto-generated method stub
 		
 	}
 
 	@Override
 	public JSONObject getEventByDate(long date) {
-		try (Connection c = DriverManager.getConnection(db)) {
-			try (PreparedStatement pstmt = c.prepareStatement("SELECT id, date, origin, status, message, ip, name FROM EVENT where index=?;")) {
+		try (Connection c = DriverManager.getConnection(this.db)) {
+			try (PreparedStatement pstmt = c.prepareStatement("SELECT id, timestamp, origin, status, message, ip, name FROM EVENT where date=?;")) {
 				pstmt.setLong(1, date);
 				
 				try (ResultSet rs = pstmt.executeQuery()) {
@@ -797,7 +935,7 @@ public class Agent implements Commander, Closeable, Listener {
 						result.put(Long.toString(rs.getLong(1)),
 							new JSONObject()
 								.put("id", rs.getLong(1))
-								.put("date", rs.getLong(2))
+								.put("timestamp", rs.getLong(2))
 								.put("origin", rs.getString(3))
 								.put("status", rs.getInt(4))
 								.put("message", rs.getString(5))
@@ -807,7 +945,7 @@ public class Agent implements Commander, Closeable, Listener {
 				}
 			} 
 		} catch (SQLException sqle) {
-			System.out.print(sqle);
+			System.err.print(sqle);
 		}
 		
 		return null;
@@ -815,8 +953,8 @@ public class Agent implements Commander, Closeable, Listener {
 
 	@Override
 	public JSONObject getIconByType(String type) {
-		try (Connection c = DriverManager.getConnection(db)) {
-			try (PreparedStatement pstmt = c.prepareStatement("SELECT type, group, alt, src, disabled, unit, color, texture, top FROM icon WHERE type=?;")) {
+		try (Connection c = DriverManager.getConnection(this.db)) {
+			try (PreparedStatement pstmt = c.prepareStatement("SELECT type, _group, alt, src, disabled, unit, color, texture, top FROM icon WHERE type=?;")) {
 				pstmt.setString(1, type);
 				
 				try (ResultSet rs = pstmt.executeQuery()) {
@@ -835,7 +973,7 @@ public class Agent implements Commander, Closeable, Listener {
 				}
 			} 
 		} catch (SQLException sqle) {
-			System.out.print(sqle);
+			System.err.print(sqle);
 		}
 		
 		return null;
@@ -863,9 +1001,70 @@ public class Agent implements Commander, Closeable, Listener {
 		return body;
 	}
 
+
+	@Override
+	public JSONObject getNode() {
+		return this.memory.getNode();
+	}
+
+	@Override
+	public JSONObject getNodeByID(long id, boolean snmp) {
+		return this.memory.getNodeByID(id);
+	}
+
+	@Override
+	public JSONObject getPath() {
+		return this.memory.getPath();
+	}
+
+	@Override
+	public JSONObject getPathByNodeID(long nodeFrom, long nodeTo) {
+		try {
+			return this.memory.getPath().getJSONObject(Long.toString(nodeFrom)).getJSONObject(Long.toString(nodeTo));
+		}
+		catch (JSONException jsone) {}
+		
+		return null;
+	}
+	/*}
+		try (Connection c = DriverManager.getConnection(this.db)) {
+			try (PreparedStatement pstmt = c.prepareStatement("SELECT id, type, color, size FROM path WHERE node_from=? AND node_to=?;")) {
+				pstmt.setLong(1, nodeFrom);
+				pstmt.setLong(1, nodeTo);
+				
+				try (ResultSet rs = pstmt.executeQuery()) {
+					if (rs.next()) {
+						JSONObject path = new JSONObject()
+							.put("id", rs.getLong(1))
+							.put("nodeFrom", nodeFrom)
+							.put("nodeTo", nodeTo);
+						
+						if (rs.getString(2) != null) {
+							path.put("type", rs.getString(2));
+						}
+						
+						if (rs.getString(3) != null) {
+							path.put("color", rs.getString(3));
+						}
+						
+						if (rs.getInt(4) > 0) {
+							path.put("size", rs.getInt(4));
+						}
+						
+						return path;
+					}
+				}
+			} 
+		} catch (SQLException sqle) {
+			System.err.print(sqle);
+		}
+		
+		return null;
+	}
+	*/
 	@Override
 	public JSONObject getPositionByName(String name) {
-		try (Connection c = DriverManager.getConnection(db)) {
+		try (Connection c = DriverManager.getConnection(this.db)) {
 			try (PreparedStatement pstmt = c.prepareStatement("SELECT position FROM position WHERE name=?;")) {
 				pstmt.setString(1, name);
 				
@@ -876,47 +1075,46 @@ public class Agent implements Commander, Closeable, Listener {
 				}
 			} 
 		} catch (SQLException sqle) {
-			System.out.print(sqle);
+			System.err.print(sqle);
 		}
+		
+		return null;
+	}
+	@Override
+	public JSONObject getProfile() {
+		return this.memory.getProfile();
+	}
+	
+	@Override
+	public JSONObject getProfileByName(String name) {
+		return this.memory.getProfileByName(name);
+	}
+	
+	@Override
+	public JSONObject getSetting() {
+		return this.memory.getSetting();
+	}
+
+	@Override
+	public JSONObject getSettingByKey(String key) {
+		try {
+			return new JSONObject()
+				.put(key, this.memory.getSetting().getString(key));
+		}
+		catch (JSONException jsone) {}
 		
 		return null;
 	}
 
 	@Override
-	public String getSettingByKey(String key) {
-		try (Connection c = DriverManager.getConnection(db)) {
-			try (PreparedStatement pstmt = c.prepareStatement("SELECT value FROM setting WHERE key=?;")) {
-				pstmt.setString(1, key);
-				
-				try (ResultSet rs = pstmt.executeQuery()) {
-					if (rs.next()) {
-						return rs.getString(1);
-					}
-				}
-			} 
-		} catch (SQLException sqle) {
-			System.out.print(sqle);
-		}
-		
-		return null;
-	}
-
-	@Override
-	public void getTop(JSONObject key) {
-		// TODO Auto-generated method stub
-		
+	public JSONObject getTop(JSONObject key) {
+		return new JSONObject();
 	}
 
 	@Override
 	public JSONObject getTraffic(JSONObject traffic) {
 		// TODO Auto-generated method stub
-		return null;
-	}
-
-	@Override
-	public JSONObject getNodeByID(String id, boolean snmp) {
-		// TODO Auto-generated method stub
-		return null;
+		return traffic;
 	}
 
 	@Override
@@ -925,7 +1123,11 @@ public class Agent implements Commander, Closeable, Listener {
 		return null;
 	}
 
-
+	@Override
+	public JSONObject getUser() {
+		return this.memory.getUser();
+	}
+	
 	public void initMonitor(JSONObject monitorList) throws IOException {
 		JSONObject monitor;
 		
@@ -957,7 +1159,7 @@ public class Agent implements Commander, Closeable, Listener {
 		}
 				
 		try (Connection c = DriverManager.getConnection(this.db)) {
-			try (PreparedStatement pstmt = c.prepareStatement("DELET FROM account WHERE username=?;")) {
+			try (PreparedStatement pstmt = c.prepareStatement("DELETE FROM account WHERE username=?;")) {
 				pstmt.setString(1, username);
 				
 				pstmt.executeUpdate();
@@ -965,7 +1167,7 @@ public class Agent implements Commander, Closeable, Listener {
 		} catch (SQLException sqle) {
 			this.memory.addAccount(username, account);
 			
-			System.out.print(sqle);
+			System.err.print(sqle);
 			
 			return false;
 		}
@@ -984,7 +1186,7 @@ public class Agent implements Commander, Closeable, Listener {
 			c.setAutoCommit(false);
 			
 			try {
-				try (PreparedStatement pstmt = c.prepareStatement("DELET FROM icon WHERE type=?;")) {
+				try (PreparedStatement pstmt = c.prepareStatement("DELETE FROM icon WHERE type=?;")) {
 					pstmt.setString(1, type);
 					
 					pstmt.executeUpdate();
@@ -1010,8 +1212,38 @@ public class Agent implements Commander, Closeable, Listener {
 	}
 	
 	@Override
-	public boolean removeLine(String id) {
-		return true;
+	public JSONObject removeLink(long nodeFrom, long nodeTo, long id) {
+		JSONObject link = null;
+		
+		try (Connection c = DriverManager.getConnection(this.db)) {
+			c.setAutoCommit(false);
+		
+			try {
+				try (PreparedStatement pstmt = c.prepareStatement("DELETE FROM link WHERE id=?;")) {
+					pstmt.setLong(1, id);
+					
+					pstmt.executeUpdate();
+				}
+				
+				link = this.memory.removeLink(nodeFrom, nodeTo, id);
+				
+				if (link == null) {
+					throw new SQLException();
+				}
+				
+				c.commit();
+			} catch (SQLException sqle) {
+				c.rollback();
+				
+				throw sqle;
+			}
+		} catch (SQLException sqle) {
+			System.err.print(sqle);
+			
+			return null;
+		}
+		
+		return link;
 	}
 	
 
@@ -1021,7 +1253,7 @@ public class Agent implements Commander, Closeable, Listener {
 			c.setAutoCommit(false);
 			
 			try {
-				try (PreparedStatement pstmt = c.prepareStatement("DELET FROM monitor WHERE id=?;")) {
+				try (PreparedStatement pstmt = c.prepareStatement("DELETE FROM monitor WHERE id=?;")) {
 					pstmt.setLong(1, id);
 					
 					pstmt.executeUpdate();
@@ -1059,7 +1291,7 @@ public class Agent implements Commander, Closeable, Listener {
 			c.setAutoCommit(false);
 			
 			try {
-				try (PreparedStatement pstmt = c.prepareStatement("DELET FROM node WHERE id=?;")) {
+				try (PreparedStatement pstmt = c.prepareStatement("DELETE FROM node WHERE id=?;")) {
 					pstmt.setLong(1, id);
 					
 					pstmt.executeUpdate();
@@ -1145,7 +1377,7 @@ public class Agent implements Commander, Closeable, Listener {
 			c.setAutoCommit(false);
 			
 			try {
-				try (PreparedStatement pstmt = c.prepareStatement("DELET FROM user WHERE name=?;")) {
+				try (PreparedStatement pstmt = c.prepareStatement("DELETE FROM user WHERE name=?;")) {
 					pstmt.setString(1, name);
 					
 					pstmt.executeUpdate();
@@ -1172,7 +1404,7 @@ public class Agent implements Commander, Closeable, Listener {
 	
 	@Override
 	public boolean setCleaner(int store) {
-		try (Connection c = DriverManager.getConnection(db)) {
+		try (Connection c = DriverManager.getConnection(this.db)) {
 			try (PreparedStatement pstmt = c.prepareStatement("INSERT INTO config (key, value) VALUES"+
 					" ('store', ?)"+
 					" ON DUPLICATE KEY UPDATE"+
@@ -1183,7 +1415,7 @@ public class Agent implements Commander, Closeable, Listener {
 			}
 			
 		} catch (SQLException sqle) {
-			System.out.print(sqle);
+			System.err.print(sqle);
 			
 			return false;
 		}
@@ -1197,7 +1429,7 @@ public class Agent implements Commander, Closeable, Listener {
 
 	@Override
 	public boolean setHealth(int health) {		
-		try (Connection c = DriverManager.getConnection(db)) {
+		try (Connection c = DriverManager.getConnection(this.db)) {
 			try (PreparedStatement pstmt = c.prepareStatement("INSERT INTO config (key, value) VALUES"+
 				" ('health', ?)"+
 				" ON DUPLICATE KEY UPDATE"+
@@ -1207,7 +1439,7 @@ public class Agent implements Commander, Closeable, Listener {
 				pstmt.executeUpdate();				
 			}
 		} catch (SQLException sqle) {
-			System.out.print(sqle);
+			System.err.print(sqle);
 			
 			return false;
 		}
@@ -1222,8 +1454,47 @@ public class Agent implements Commander, Closeable, Listener {
 	}
 
 	@Override
-	public boolean setSNMPInterval(long interval) {
+	public boolean setLink(long nodeFrom, long nodeTo, long id, JSONObject link) {
 		try (Connection c = DriverManager.getConnection(db)) {
+			try (PreparedStatement pstmt = c.prepareStatement("UPDATE link SET"+
+					" index_from=?"+
+					", index_to=?"+
+					", extra=?"+
+					" WHERE id=?;")) {
+		
+				if (link.has("indexFrom")) {
+					pstmt.setLong(1, link.getLong("indexFrom"));
+				}
+				else {
+					pstmt.setNull(1, Types.INTEGER);
+				}
+				
+				if (link.has("indexTo")) {
+					pstmt.setLong(2, link.getLong("indexTo"));
+				}
+				else {
+					pstmt.setNull(2, Types.INTEGER);
+				}
+				
+				pstmt.setString(3, link.has("extra")? link.getJSONObject("extra").toString(): null);
+				pstmt.setLong(4, id);
+				
+				pstmt.executeUpdate();
+				
+				this.memory.setLink(nodeFrom, nodeTo, id, link);
+			}
+		} catch (SQLException sqle) {
+			System.err.print(sqle);
+			
+			return false;
+		}
+		
+		return true;
+	}
+	
+	@Override
+	public boolean setSNMPInterval(long interval) {
+		try (Connection c = DriverManager.getConnection(this.db)) {
 			try (PreparedStatement pstmt = c.prepareStatement("INSERT INTO config (key, value) VALUES"+
 					" ('snmpInterval', ?)"+
 					" ON DUPLICATE KEY UPDATE"+
@@ -1233,7 +1504,7 @@ public class Agent implements Commander, Closeable, Listener {
 				pstmt.executeUpdate();
 			}
 		} catch (SQLException sqle) {
-			System.out.print(sqle);
+			System.err.print(sqle);
 			
 			return false;
 		}
@@ -1247,7 +1518,7 @@ public class Agent implements Commander, Closeable, Listener {
 
 	@Override
 	public boolean setSaveInterval(int interval) {
-		try (Connection c = DriverManager.getConnection(db)) {
+		try (Connection c = DriverManager.getConnection(this.db)) {
 			try (PreparedStatement pstmt = c.prepareStatement("INSERT INTO config (key, value) VALUES"+
 				" ('saveInterval', ?)"+
 				" ON DUPLICATE KEY UPDATE"+
@@ -1257,7 +1528,7 @@ public class Agent implements Commander, Closeable, Listener {
 				pstmt.executeUpdate();
 			}
 		} catch (SQLException sqle) {
-			System.out.print(sqle);
+			System.err.print(sqle);
 			
 			return false;
 		}
@@ -1271,7 +1542,7 @@ public class Agent implements Commander, Closeable, Listener {
 
 	@Override
 	public boolean setTopCount(int count) {
-		try (Connection c = DriverManager.getConnection(db)) {
+		try (Connection c = DriverManager.getConnection(this.db)) {
 			try (PreparedStatement pstmt = c.prepareStatement("INSERT INTO config (key, value) VALUES"+
 				" ('topCount', ?)"+
 				" ON DUPLICATE KEY UPDATE"+
@@ -1281,7 +1552,7 @@ public class Agent implements Commander, Closeable, Listener {
 				pstmt.executeUpdate();
 			} 
 		} catch (SQLException sqle) {
-			System.out.print(sqle);
+			System.err.print(sqle);
 			
 			return false;
 		}
@@ -1296,7 +1567,7 @@ public class Agent implements Commander, Closeable, Listener {
 	@Override
 	public SMTP setSMTPServer(JSONObject smtp) {
 		if (smtp.has("disabled") && smtp.getBoolean("disabled")) {
-			try (Connection c = DriverManager.getConnection(db)) {
+			try (Connection c = DriverManager.getConnection(this.db)) {
 				try (Statement stmt = c.createStatement()){
 					stmt.executeUpdate("UPDATE config SET value='true' where key='smtpDisabled';");
 				}
@@ -1304,7 +1575,7 @@ public class Agent implements Commander, Closeable, Listener {
 				this.memory.setConfig("smtpDisabled", "true");
 				
 			} catch (SQLException sqle) {					
-				System.out.print(sqle);
+				System.err.print(sqle);
 			}
 			
 			//TODO SMTP 서버 동작 중지
@@ -1335,7 +1606,7 @@ public class Agent implements Commander, Closeable, Listener {
 			default: return null;
 			}
 			
-			try (Connection c = DriverManager.getConnection(db)) {
+			try (Connection c = DriverManager.getConnection(this.db)) {
 				try (PreparedStatement pstmt = c.prepareStatement("INSERT INTO config (key, value) VALUES"+
 					" ('smtpServer', ?)"+
 					" ,('smtpProtocol', ?)"+
@@ -1355,7 +1626,7 @@ public class Agent implements Commander, Closeable, Listener {
 					pstmt.executeUpdate();
 				}
 			} catch (SQLException sqle) {
-				System.out.print(sqle);
+				System.err.print(sqle);
 				
 				return null;
 			}
@@ -1372,7 +1643,7 @@ public class Agent implements Commander, Closeable, Listener {
 
 	@Override
 	public boolean setStoreDate(int period) {
-		try (Connection c = DriverManager.getConnection(db)) {
+		try (Connection c = DriverManager.getConnection(this.db)) {
 			try (PreparedStatement pstmt = c.prepareStatement("INSERT INTO config (key, value) VALUES"+
 				" ('storeDate', ?)"+
 				" ON DUPLICATE KEY UPDATE"+
@@ -1382,7 +1653,7 @@ public class Agent implements Commander, Closeable, Listener {
 				pstmt.executeUpdate();
 			} 
 		} catch (SQLException sqle) {
-			System.out.print(sqle);
+			System.err.print(sqle);
 			
 			return false;
 		}
@@ -1395,6 +1666,27 @@ public class Agent implements Commander, Closeable, Listener {
 	
 	@Override
 	public boolean setNode(long id, JSONObject node) {
+		try (Connection c = DriverManager.getConnection(this.db)) {
+			try (PreparedStatement pstmt = c.prepareStatement("UPDATE node SET"+
+				" name=?"+
+				", type=?"+
+				", label=?"+
+				" WHERE id=?;")) {
+				pstmt.setString(1, node.getString("name"));
+				pstmt.setString(2, node.getString("type"));
+				pstmt.setString(3, node.getString("label"));
+				pstmt.setLong(4, id);
+				
+				pstmt.executeUpdate();
+			}
+			
+			this.memory.setNode(id, node);
+		} catch (SQLException sqle) {
+			System.err.print(sqle);
+			
+			return false;
+		}
+		
 		return true;
 	}
 
@@ -1440,7 +1732,7 @@ public class Agent implements Commander, Closeable, Listener {
 	public boolean setIcon(String type, JSONObject icon) {
 		try (Connection c = DriverManager.getConnection(this.db)) {
 			try (PreparedStatement pstmt = c.prepareStatement("UPDATE icon SET"+
-				" group=?,"+
+				" _group=?,"+
 				" alt=?,"+
 				" src=?,"+
 				" disabled=?,"+
@@ -1464,7 +1756,7 @@ public class Agent implements Commander, Closeable, Listener {
 			
 			this.memory.setIcon(type, icon);
 		} catch (SQLException sqle) {
-			System.out.print(sqle);
+			System.err.print(sqle);
 			
 			return false;
 		}
@@ -1478,7 +1770,29 @@ public class Agent implements Commander, Closeable, Listener {
 	}
 	
 	@Override
-	public boolean setLine(String id, JSONObject line) {
+	public boolean setPath(long nodeFrom, long nodeTo, JSONObject path) {
+		try (Connection c = DriverManager.getConnection(this.db)) {
+			try (PreparedStatement pstmt = c.prepareStatement("UPDATE path SET"+
+				" type=?,"+
+				" color=?,"+
+				" size=?,"+
+				" WHERE node_from=? AND node_to=?;")) {
+				pstmt.setString(1, path.has("type")? path.getString("type"): null);
+				pstmt.setString(2, path.has("color")? path.getString("color"): null);
+				pstmt.setInt(3, path.has("size")? path.getInt("size"): 0);
+				pstmt.setLong(4, nodeFrom);
+				pstmt.setLong(5, nodeTo);
+				
+				pstmt.executeUpdate();
+				
+				this.memory.setPath(nodeFrom, nodeTo, path);
+			}
+		} catch (SQLException sqle) {
+			System.err.print(sqle);
+			
+			return false;
+		}
+		
 		return true;
 	}
 
@@ -1513,7 +1827,7 @@ public class Agent implements Commander, Closeable, Listener {
 				this.memory.setUser(name, user);
 			} 
 		} catch (SQLException sqle) {
-			System.out.print(sqle);
+			System.err.print(sqle);
 			
 			return false;
 		}
@@ -1537,7 +1851,7 @@ public class Agent implements Commander, Closeable, Listener {
 			
 			this.memory.setPosition(name, s);
 		} catch (SQLException sqle) {
-			System.out.print(sqle);
+			System.err.print(sqle);
 			
 			return false;
 		}
@@ -1548,18 +1862,20 @@ public class Agent implements Commander, Closeable, Listener {
 	@Override
 	public boolean setSetting(String key, String value) {
 		try (Connection c = DriverManager.getConnection(db)) {
-			try (PreparedStatement pstmt = c.prepareStatement("UPDATE setting SET"+
-				" value=?"+
-				" where key=?;")) {
-				pstmt.setString(1, value);
-				pstmt.setString(2, key);
+			try (PreparedStatement pstmt = c.prepareStatement("INSERT INTO setting (key, value) VALUES"+
+					" (?, ?)"+
+					" ON CONFLICT(key) DO UPDATE SET value=?;")) {
+		
+				pstmt.setString(1, key);
+				pstmt.setString(2, value);
+				pstmt.setString(3, value);
 				
 				pstmt.executeUpdate();
 			}
 			
 			this.memory.setSetting(key, value);
 		} catch (SQLException sqle) {
-			System.out.print(sqle);
+			System.err.print(sqle);
 			
 			return false;
 		}
@@ -1571,8 +1887,8 @@ public class Agent implements Commander, Closeable, Listener {
 	public boolean search(String network, int mask) {
 		try {
 			JSONObject
-				profileList = this.memory.getProfileAll(),
-				args [] = new JSONObject[this.memory.getProfileSize()];
+				profileList = this.memory.getProfile(),
+				args [] = new JSONObject[this.memory.getProfile().length()];
 			int i = 0;
 			Search search;
 			

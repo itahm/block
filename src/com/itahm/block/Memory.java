@@ -11,8 +11,10 @@ public class Memory {
 	private final JSONObject config = new JSONObject();
 	private final JSONObject icon = new JSONObject();
 	private final JSONObject line = new JSONObject();
+	private final JSONObject link = new JSONObject();
 	private final JSONObject monitor = new JSONObject();
 	private final JSONObject node = new JSONObject();
+	private final JSONObject path = new JSONObject();
 	private final JSONObject position = new JSONObject();
 	private final JSONObject profile = new JSONObject();
 	private final JSONObject setting = new JSONObject();
@@ -30,7 +32,6 @@ public class Memory {
 	
 	public void addIcon(String type, JSONObject icon) {
 		this.icon.put(type, icon);
-		
 	}
 	
 	public void addLine(String id, JSONObject line) {
@@ -44,12 +45,14 @@ public class Memory {
 	public boolean addNode(long id, JSONObject node) {
 		synchronized(this.node) {
 			synchronized(this.ipIndex) {
-				if (this.node.has(Long.toString(id))) {
-					return false;
-				}
-				
 				if (node.has("ip")) {
-					this.ipIndex.put(node.getString("ip"), id);
+					String ip = node.getString("ip");
+					
+					if (this.ipIndex.containsKey(ip)) {
+						return false;
+					}
+					
+					this.ipIndex.put(node.getString("ip"), id);					
 				}
 				
 				this.node.put(Long.toString(id), node);
@@ -64,42 +67,30 @@ public class Memory {
 	}
 
 	public void addProfile(String name, JSONObject profile) {
-		this.position.put(name, profile);
-	}
-	
-	public void addRe(String name, JSONObject profile) {
-		this.position.put(name, profile);
+		this.profile.put(name, profile);
 	}
 	
 	public void addUser(String name, JSONObject user) {
 		this.user.put(name, user);
 	}
 
-	public JSONObject getAccountAll() {
+	public JSONObject getAccount() {
 		return this.account;
 	}
 	
-	public JSONObject getAccountByUsername(String username) {
-		return this.account.getJSONObject(username);
-	}
-	
-	public int getAccountSize() {
-		return this.account.length();
-	}
-	
-	public JSONObject getConfigAll() {
+	public JSONObject getConfig() {
 		return this.config;
 	}
 	
-	public JSONObject getIconAll() {
+	public JSONObject getIcon() {
 		return this.icon;
 	}
 	
-	public JSONObject getLineAll() {
-		return this.line;
+	public JSONObject getLink() {
+		return this.link;
 	}
 	
-	public JSONObject getMonitorAll() {
+	public JSONObject getMonitor() {
 		return this.monitor;
 	}
 	
@@ -112,7 +103,7 @@ public class Memory {
 		return null;
 	}
 	
-	public JSONObject getNodeAll() {
+	public JSONObject getNode() {
 		return this.node;
 	}
 
@@ -135,7 +126,7 @@ public class Memory {
 		return null; 
 	}
 	
-	public JSONObject getPositionAll() {
+	public JSONObject getPosition() {
 		return this.position;
 	}
 	
@@ -148,12 +139,12 @@ public class Memory {
 		
 		return null;
 	}
-
-	public int getPositionSize() {
-		return this.position.length();
+	
+	public JSONObject getPath() {
+		return this.path;
 	}
-
-	public JSONObject getProfileAll() {
+	
+	public JSONObject getProfile() {
 		return this.profile;
 	}
 	
@@ -161,16 +152,11 @@ public class Memory {
 		return this.profile.getJSONObject(name);
 	}
 	
-	
-	public int getProfileSize() {
-		return this.profile.length();
-	}
-	
-	public JSONObject getSettingAll() {
+	public JSONObject getSetting() {
 		return this.setting;
 	}
 	
-	public JSONObject getUserAll() {
+	public JSONObject getUser() {
 		return this.user;
 	}
 	
@@ -238,8 +224,12 @@ public class Memory {
 		return (JSONObject)this.icon.remove(type);
 	}
 	
-	public void removeLine(String id) {
-		this.line.remove(id);
+	public JSONObject removeLink(long nodeFrom, long nodeTo, long id) {
+		try {
+			return (JSONObject)this.link.getJSONObject(Long.toString(nodeFrom)).getJSONObject(Long.toString(nodeTo)).remove(Long.toString(id));
+		} catch (JSONException jsone) {}
+		
+		return null;
 	}
 	
 	public JSONObject removeMonitor(long id) {
@@ -318,8 +308,50 @@ public class Memory {
 		this.icon.put(type, icon);
 	}
 	
+	public void setLink(long nodeFrom, long nodeTo, long linkID, JSONObject link) {
+		String id = Long.toString(nodeFrom);
+		JSONObject peer;
+		
+		if ((this.link.has(id) )) {
+			peer = this.link.getJSONObject(id);
+		}
+		else {
+			this.link.put(id, peer = new JSONObject());
+		}
+		
+		id = Long.toString(nodeTo);
+		
+		if (peer.has(id)) {
+			peer.getJSONObject(id).put(Long.toString(linkID), link);
+		}
+		else {
+			peer.put(id, new JSONObject().put(Long.toString(linkID), link));
+		}
+	}
+	
 	public void setMonitor(long id, JSONObject monitor) {
 		this.monitor.put(Long.toString(id), monitor);
+	}
+	
+	public void setNode(long id, JSONObject node) {
+		this.node.getJSONObject(Long.toString(id))
+			.put("name", node.getString("name"))
+			.put("type", node.getString("type"))
+			.put("label", node.getString("label"));
+	}
+	
+	public void setPath(long nodeFrom, long nodeTo, JSONObject path) {
+		String id = Long.toString(nodeFrom);
+		JSONObject peer;
+		
+		if ((this.path.has(id) )) {
+			peer = this.path.getJSONObject(id);
+		}
+		else {
+			this.path.put(id, peer = new JSONObject());
+		}
+		
+		peer.put(Long.toString(nodeTo), path);
 	}
 	
 	public void setPosition(String name, String position) {
@@ -327,7 +359,7 @@ public class Memory {
 	}
 	
 	public void setSetting(String key, String value) {
-		this.setting.put(key, value);
+		this.setting.put(key, value == null? JSONObject.NULL: value);
 	}
 	
 	public void setUser(String name, JSONObject user) {

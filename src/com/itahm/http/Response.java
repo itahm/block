@@ -22,6 +22,7 @@ public class Response {
 	
 	public enum Status {
 		OK(200, "OK"),
+		NOCONTENT(204, "No Content"),
 		BADREQUEST(400, "Bad request"),
 		UNAUTHORIZED(401, "Unauthorized"),
 		NOTFOUND(404, "Not found"),

@@ -29,7 +29,7 @@ public class Search implements Runnable, ResponseListener {
 
 	private final static long TIMEOUT = 10000;
 	
-	private final Thread thread = new Thread(this, "com.itahm.Search");
+	private final Thread thread = new Thread(this, "Smart Search");
 	private final Snmp snmpServer;
 	private final Network network;
 	private final JSONObject [] profile;

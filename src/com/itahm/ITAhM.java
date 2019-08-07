@@ -1,6 +1,8 @@
 package com.itahm;
 
 import java.io.IOException;
+import java.io.OutputStream;
+import java.io.PrintStream;
 import java.io.UnsupportedEncodingException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -25,9 +27,10 @@ import com.itahm.block.SMTP;
 public class ITAhM extends HTTPServer implements Listener {
 	private byte [] event = null;
 	private final static int SESS_TIMEOUT = 3600;
-	
+	private final static String VERSION = "CeMS v1.0"; 
 	private final Path root;
 	public final int limit;
+	public final long expire;
 	private Agent agent;
 	private SMTP smtp;
 	
@@ -38,8 +41,9 @@ public class ITAhM extends HTTPServer implements Listener {
 		
 		root = builder.root;
 		limit = builder.limit;
+		expire = builder.expire;
 		
-		if (builder.expire > 0 && new Expire(builder.expire, this).isExpired()) {
+		if (expire > 0 && new Expire(expire, this).isExpired()) {
 			throw new Exception("Check your License.Expire");
 		}
 		
@@ -56,7 +60,7 @@ public class ITAhM extends HTTPServer implements Listener {
 		private int tcp = 2014;
 		private Path root = null;
 		private boolean licensed = true;
-		private long expire = -1;
+		private long expire = 0;
 		private int limit = 0;
 		
 		public Builder() {
@@ -279,24 +283,25 @@ public class ITAhM extends HTTPServer implements Listener {
 				add(request, response);
 				
 				break;
-			case "SET":
-				set(request, response);
+			case "ECHO": break;
+			case "GET":
+				get(request, response);
 				
-				break;
+				break;			
 			case "REMOVE":
 				remove(request, response);
 				
 				break;
-			case "GET":
-				get(request, response);
+			case "SEARCH":
+				this.agent.search(request.getString("network"), request.getInt("mask"));
+				
+				break;
+			case "SET":
+				set(request, response);
 				
 				break;
 			case "QUERY":
-				this.agent.getDataByID(request.getString("key"));
-				
-				break;
-			case "SEARCH":
-				this.agent.search(request.getString("network"), request.getInt("mask"));
+				this.agent.getDataByID(request.getLong("id"));
 				
 				break;
 			default:
@@ -314,7 +319,8 @@ public class ITAhM extends HTTPServer implements Listener {
 		} catch (Exception e) {
 			response.write(new JSONObject().
 				put("error", e.getMessage()).toString());
-			
+			System.out.println(e.getMessage());
+			System.err.print(e);
 			response.setStatus(Response.Status.SERVERERROR);
 		}
 		
@@ -326,27 +332,37 @@ public class ITAhM extends HTTPServer implements Listener {
 		
 		switch(request.getString("target").toUpperCase()) {
 		case "ACCOUNT":
-			success = this.agent.addAccount(request.getString("key"), request.getJSONObject("value"));
+			success = this.agent.addAccount(request.getString("username"), request.getJSONObject("account"));
 			
 			break;
 		case "ICON":
-			success = this.agent.addIcon(request.getString("key"), request.getJSONObject("value"));
+			success = this.agent.addIcon(request.getString("type"), request.getJSONObject("icon"));
 			
 			break;
-		case "LINE":
-			this.agent.addLine(request.getString("key"), request.getJSONObject("value"));
-			
+		case "LINK":
+			if (!this.agent.addLink(request.getLong("nodeFrom"), request.getLong("nodeTo"))) {
+				response.setStatus(Response.Status.CONFLICT);
+			}
 			break;
+			
 		case "NODE":
-			this.agent.addNode(request.getJSONObject("value"));
+			if (this.agent.addNode(request.getJSONObject("node")) == null) {
+				response.setStatus(Response.Status.CONFLICT);
+			}
+			
+			break;
+		case "PATH":
+			if (!this.agent.addPath(request.getLong("nodeFrom"), request.getLong("nodeTo"))) {
+				response.setStatus(Response.Status.CONFLICT);
+			}
 			
 			break;
 		case "PROFILE":
-			this.agent.addProfile(request.getString("key"), request.getJSONObject("value"));
+			this.agent.addProfile(request.getString("name"), request.getJSONObject("profile"));
 			
 			break;
 		case "USER":
-			this.agent.addUser(request.getString("key"), request.getJSONObject("value"));
+			this.agent.addUser(request.getString("name"), request.getJSONObject("user"));
 			
 			break;
 		default:
@@ -355,7 +371,6 @@ public class ITAhM extends HTTPServer implements Listener {
 		}
 		
 		if (!success) {
-			// response status 정해줄것
 		}
 	}
 	
@@ -415,16 +430,26 @@ public class ITAhM extends HTTPServer implements Listener {
 			success = this.agent.setIcon(request.getString("key"), request.getJSONObject("value"));
 			
 			break;
-		case "LINE":
-			success = this.agent.setLine(request.getString("key"), request.getJSONObject("value"));
+		case "LINK":
+			if (!this.agent.setLink(request.getLong("nodeFrom"), request.getLong("nodeTo"), request.getLong("id"),request.getJSONObject("link"))) {
+				response.setStatus(Response.Status.CONFLICT);
+			}
+			
+			break;
+		case "PATH":
+			if (!this.agent.setPath(request.getLong("nodeFrom"), request.getLong("nodeTo"), request.getJSONObject("path"))) {
+				response.setStatus(Response.Status.CONFLICT);
+			}
 			
 			break;
 		case "MONOTOR":
-			success = this.agent.setMonitor(request.getLong("key"), request.getString("value"));
+			success = this.agent.setMonitor(request.getLong("id"), request.getString("protocol"));
 			
 			break;
 		case "NODE":
-			success = this.agent.setNode(request.getLong("key"), request.getJSONObject("value"));
+			if (!this.agent.setNode(request.getLong("key"), request.getJSONObject("value"))) {
+				response.setStatus(Response.Status.SERVERERROR);
+			}
 			
 			break;
 		case "POSITION":
@@ -432,7 +457,9 @@ public class ITAhM extends HTTPServer implements Listener {
 			
 			break;
 		case "SETTING":
-			success = this.agent.setSetting(request.getString("key"), request.getString("value"));
+			if (!this.agent.setSetting(request.getString("key"), request.has("value")? request.getString("value"): null)) {
+				response.setStatus(Response.Status.CONFLICT);
+			}
 			
 			break;
 		case "SPEED":
@@ -462,15 +489,17 @@ public class ITAhM extends HTTPServer implements Listener {
 		
 		switch(request.getString("target").toUpperCase()) {
 		case "ACCOUNT":
-			success = this.agent.removeAccount(request.getString("key"));
+			success = this.agent.removeAccount(request.getString("username"));
 			
 			break;
 		case "ICON":
 			success = this.agent.removeIcon(request.getString("key"));
 			
 			break;
-		case "LINE":
-			success = this.agent.removeLine(request.getString("key"));
+		case "LINK":
+			if (this.agent.removeLink(request.getLong("nodeFrom"), request.getLong("nodeTo"), request.getLong("id")) == null) {
+				response.setStatus(Response.Status.CONFLICT);
+			};
 			
 			break;
 		case "MONOTOR":
@@ -504,113 +533,64 @@ public class ITAhM extends HTTPServer implements Listener {
 		
 		if (target instanceof JSONArray) {
 			JSONArray targets = (JSONArray)target;
+			JSONObject result = new JSONObject();
 			
 			for (int i=0, _i=targets.length(); i<_i; i++) {
-				get(targets.getString(i), request, response);
+				result.put(targets.getString(i), get(targets.getString(i), request));
 			}
+			
+			response.write(result.toString());
 		}
 		else if (target instanceof String){
-			if (request.has("key")) {
-				get((String)target, request.get("key"), request, response);	
+			JSONObject result = get((String)target, request);
+			
+			if (result == null) {
+				response.setStatus(Response.Status.NOCONTENT);
 			}
 			else {
-				get((String)target, request, response);
-			}
-		}
-	}
-	
-	private void get(String target, Object o, JSONObject request, Response response) {
-		if (o instanceof String) {
-			String key = (String)o;
-		
-			switch(target.toUpperCase()) {
-			case "NODE":
-				this.agent.getNodeByID(key, request.has("snmp") && request.getBoolean("snmp"));
-				
-				break;
-			case "LOG":
-				this.agent.getEventByDate(Long.valueOf(key));
-				
-				break;
-			case "ICON":
-				this.agent.getIconByType(key);
-				
-				break;
-			case "SETTING":
-				this.agent.getSettingByKey(key);
-				
-				break;
-			default:
-				
-				throw new JSONException("Target is not found.");
-			}
-		}
-		else if (o instanceof JSONObject && target.equalsIgnoreCase("TRAFFIC")) {
-			switch(target.toUpperCase()) {
-			case "TRAFFIC":
-				this.agent.getTraffic((JSONObject)o);
-				
-				break;
-			case "TOP":
-				this.agent.getTop((JSONObject)o);
-				
-				break;
-			default:
-				
-				throw new JSONException("Target is not found.");
+				response.write(result.toString());
 			}
 		}
 		else {
-			throw new JSONException("Target is not found.");
+			throw new JSONException("Target is not valid.");
 		}
 	}
 	
-	private void get(String target, JSONObject request, Response response) {
-		JSONObject result;
-		
+	private JSONObject get(String target, JSONObject request) {
 		switch(target.toUpperCase()) {
 		case "ACCOUNT":
-			result = this.agent.getAccountAll();
-			
-			break;
+			return request.has("username")? this.agent.getAccountByUsername(request.getString("username")): this.agent.getAccount();
+		case "CONFIG": return request.has("key")? this.agent.getConfigByKey(request.getString("key")): this.agent.getConfig();
+		case "ICON": return request.has("type")? this.agent.getIconByType(request.getString("type")): this.agent.getIcon();
 		case "INFORMATION":
-			result = this.agent.getInformation();
+			JSONObject result = this.agent.getInformation();
 			
+			result
+				.put("version", VERSION)
+				.put("java", System.getProperty("java.version"))
+				.put("path", this.root.toString())
+				.put("expire", this.expire);
 			try {
-				result
-					.put("java", System.getProperty("java.version"))
-					.put("space", Files.getFileStore(this.root).getUsableSpace());
+				result.put("space", Files.getFileStore(this.root).getUsableSpace());
 			} catch (IOException ioe) {
-				System.out.print(ioe);
+				System.err.print(ioe);
 			}
 			
-			break;
-		case "LINE":
-			result = this.agent.getLineAll();
-			
-			break;
-		case "NODE":
-			result = this.agent.getNodeAll();
-			
-			break;
-		case "POSITION":
-			result = this.agent.getPositionByName("position");
-			
-			break;
-		case "profile":
-			result = this.agent.getProfileAll();
-			
-			break;
-		case "SETTING":
-			result = this.agent.getSettingAll();
-			
-			break;
+			return result;
+		case "LINK": return request.has("nodeFrom")? this.agent.getLinkByNodeID(request.getLong("nodeFrom"), request.getLong("nodeTo")): this.agent.getLink();
+		case "LOG": return this.agent.getEventByDate(request.getLong("date"));
+		case "NODE": return request.has("id")? this.agent.getNodeByID(request.getLong("id"), request.has("snmp") && request.getBoolean("snmp")): this.agent.getNode();
+		case "PATH":return request.has("nodeFrom")? this.agent.getPathByNodeID(request.getLong("nodeFrom"), request.getLong("nodeTo")): this.agent.getPath();
+		case "POSITION": return this.agent.getPositionByName("position");
+		case "PROFILE": return this.agent.getProfile();
+		case "SETTING": return request.has("key")? this.agent.getSettingByKey(request.getString("key")): this.agent.getSetting();
+		case "TOP": return this.agent.getTop(request.getJSONObject("top"));
+		case "TRAFFIC": return this.agent.getTraffic(request.getJSONObject("traffic"));
+		
 		default:
 			
 			throw new JSONException("Target is not found.");
 		}
-		
-		response.write(result.toString());
 	}
 	
 	public static void main(String[] args) throws Exception {
@@ -636,8 +616,25 @@ public class ITAhM extends HTTPServer implements Listener {
 			}
 		}
 		
+		System.setErr(
+			new PrintStream(
+				new OutputStream() {
+
+					@Override
+					public void write(int b) throws IOException {
+					}	
+				}
+			) {
+		
+				@Override
+				public void print(Object e) {
+					((Exception)e).printStackTrace(System.out);
+				}
+			}
+		);
+		
 		ITAhM itahm = builder
-				.license("A402B93D8051")
+				//.license("A402B93D8051")
 				.build();
 		
 		Runtime.getRuntime().addShutdownHook(
