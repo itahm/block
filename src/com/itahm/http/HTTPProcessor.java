@@ -55,7 +55,7 @@ public class HTTPProcessor extends Thread {
 		try {
 			this.connection.write(response);
 		} catch (IOException ioe) {
-			System.err.print(ioe);
+			ioe.printStackTrace();
 		}
 	}
 }

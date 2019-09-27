@@ -1,9 +1,12 @@
 package com.itahm.block.node;
 
-import java.io.Closeable;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.Vector;
 
 import org.snmp4j.PDU;
@@ -11,44 +14,144 @@ import org.snmp4j.Snmp;
 import org.snmp4j.Target;
 import org.snmp4j.event.ResponseEvent;
 import org.snmp4j.mp.SnmpConstants;
-import org.snmp4j.smi.Address;
 import org.snmp4j.smi.Null;
 import org.snmp4j.smi.OID;
+import org.snmp4j.smi.UdpAddress;
 import org.snmp4j.smi.Variable;
 import org.snmp4j.smi.VariableBinding;
 
-abstract public class SNMPNode<T extends Address> extends ICMPNode implements Closeable {
+import com.itahm.block.node.PDUManager;
+import com.itahm.util.Listenable;
+import com.itahm.util.Listener;
 
+abstract public class SNMPNode extends ICMPNode implements Listenable {
+
+	private final static long TIMEOUT = 5000L;
+	private final static int RETRY = 2;
 	private final Snmp snmp;
-	protected final Target<T> target;
-	private final ArrayList<OID> request = new ArrayList<>();
+	protected final Target<UdpAddress> target;
+	private final ArrayList<Listener> listenerList = new ArrayList<>();
+	private final Set<OID> reqList = new HashSet<>();
+	private final Map<OID, OID> reqMap = new HashMap<>();
 	
-	public SNMPNode(Snmp snmp, long id, String ip, Target<T> target) throws IOException {
-		super(id, ip);
+	public SNMPNode(Snmp snmp, long id, String ip, Target<UdpAddress> target) throws IOException {
+		super(id, ip, String.format("SNMPNode %s", ip));
 
-		super.thread.setName(String.format("SNMPNode %s", ip));
-		
 		this.snmp = snmp;
 		this.target = target;
+		
+		target.setTimeout(TIMEOUT);
+		target.setRetries(RETRY);
 	}
 	
-	public synchronized int sendRequest(PDU pdu) throws IOException {
-		this.request.clear();
+	@Override
+	public void addEventListener(Listener listener) {
+		this.listenerList.add(listener);
+	}
+	
+	@Override
+	public void removeEventListener(Listener listener) {
+		this.listenerList.remove(listener);
+	}
+	
+	@Override
+	public void fireEvent(Object ...event) {
+		if (event[0] instanceof Event && (Event)event[0] == Event.PING) {
+			if (event[1] instanceof Long) {
+				long rtt = (long)event[1];
+				
+				if (rtt > -1) {
+					PDU pdu = PDUManager.requestPDU(super.id, createPDU());
+					OID oid;
+					
+					pdu.setType(PDU.GETNEXT);
+					
+					this.reqList.clear();
+					this.reqMap.clear();
 
-		List<? extends VariableBinding> vbs = pdu.getVariableBindings();
-		VariableBinding vb;
+					List<? extends VariableBinding> vbs = pdu.getVariableBindings();
+					VariableBinding vb;
+					
+					for (int i=0, length = vbs.size(); i<length; i++) {
+						vb = (VariableBinding)vbs.get(i);
+					
+						oid = vb.getOid();
+						
+						this.reqList.add(oid);
+						this.reqMap.put(oid, oid);
+					}
+					
+					try {
+						int code = repeat(this.snmp.send(pdu, this.target));
+						
+						for (Listener listener: this.listenerList) {
+							listener.onEvent(this, Event.SNMP, code);
+						}
+					} catch (Exception e) {
+						for (Listener listener: this.listenerList) {
+							listener.onEvent(this, Event.SNMP, e);
+						}
+					};
+				}
+				
+				for (Listener listener: this.listenerList) {
+					listener.onEvent(this, event);
+				}
+			}
+		}
+	}
+	
+	private final PDU getNextPDU(PDU request, PDU response) throws IOException {
+		PDU pdu = null;
+		long requestID = response.getRequestID().toLong();
+		List<? extends VariableBinding> requestVBs = request.getVariableBindings();
+		List<? extends VariableBinding> responseVBs = response.getVariableBindings();
+		List<VariableBinding> nextRequests = new Vector<VariableBinding>();
+		VariableBinding requestVB;
+		VariableBinding responseVB;
+		Variable value;
+		OID
+			initialOID,
+			requestOID,
+			responseOID;
 		
-		for (int i=0, length = vbs.size(); i<length; i++) {
-			vb = (VariableBinding)vbs.get(i);
+		for (int i=0, length = responseVBs.size(); i<length; i++) {
+			requestVB = requestVBs.get(i);
+			responseVB = responseVBs.get(i);
 			
-			this.request.add(vb.getOid());
+			requestOID = requestVB.getOid();
+			responseOID = responseVB.getOid();
+			
+			value = responseVB.getVariable();
+			
+			if (!value.equals(Null.endOfMibView)) {
+				initialOID = this.reqMap.get(requestOID);
+				
+				if (responseOID.startsWith(initialOID)) {
+					nextRequests.add(new VariableBinding(responseOID));
+					
+					this.reqMap.put(responseOID, initialOID);
+						
+					for (Listener listener: this.listenerList) {
+						listener.onEvent(this, Event.RESOURCE, initialOID, responseOID.getSuffix(initialOID), responseVB.getVariable(), requestID);
+					}
+				}
+			}
+			
+			this.reqMap.remove(requestOID);
 		}
 		
-		return onEvent(this.snmp.send(pdu, this.target));
+		if (nextRequests.size() > 0) {
+			pdu = createPDU();
+			
+			pdu.setVariableBindings(nextRequests);
+		}
+		
+		return pdu;
 	}
 	
 	// recursive method
-	private int onEvent(ResponseEvent<T> event) throws IOException {
+	private int repeat(ResponseEvent<UdpAddress> event) throws IOException {
 		if (event == null) {
 			return SnmpConstants.SNMP_ERROR_TIMEOUT;
 		}
@@ -72,48 +175,7 @@ abstract public class SNMPNode<T extends Address> extends ICMPNode implements Cl
 			return SnmpConstants.SNMP_ERROR_SUCCESS;
 		}
 		
-		return onEvent(this.snmp.send(nextPDU, this.target));
-	}
-	
-	private final PDU getNextPDU(PDU request, PDU response) throws IOException {
-		PDU pdu = null;
-		List<? extends VariableBinding> responseVBs = response.getVariableBindings();
-		List<VariableBinding> nextRequests = new Vector<VariableBinding>();
-		VariableBinding responseVB;
-		Variable value;
-		OID responseOID;
-		
-		for (int i=0, length = responseVBs.size(); i<length; i++) {
-
-			responseVB = (VariableBinding)responseVBs.get(i);
-			responseOID = responseVB.getOid();
-			value = responseVB.getVariable();
-			
-			if (value == Null.endOfMibView) {
-				continue;
-			}
-			
-			for (OID oid : this.request) {
-				if (responseOID.startsWith(oid)) {
-					
-					nextRequests.add(new VariableBinding(responseOID));
-					
-					super.fireEvent(Event.RESOURCE, oid, responseOID.getSuffix(oid), responseVB.getVariable());
-					
-					break;
-				}
-			}
-			
-			
-		}
-		
-		if (nextRequests.size() > 0) {
-			pdu = createPDU();
-			
-			pdu.setVariableBindings(nextRequests);
-		}
-		
-		return pdu;
+		return repeat(this.snmp.send(nextPDU, this.target));
 	}
 	
 	abstract protected PDU createPDU();

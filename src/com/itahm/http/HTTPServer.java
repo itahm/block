@@ -136,7 +136,7 @@ public abstract class HTTPServer implements Runnable, Closeable {
 			try {
 				count = this.selector.select();
 			} catch (IOException ioe) {
-				System.err.print(ioe);
+				ioe.printStackTrace();
 				
 				continue;
 			}
@@ -155,7 +155,7 @@ public abstract class HTTPServer implements Runnable, Closeable {
 						try {
 							onConnect();
 						} catch (IOException ioe) {
-							System.err.print(ioe);
+							ioe.printStackTrace();
 						}
 					}
 					else if (key.isReadable()) {
@@ -163,12 +163,12 @@ public abstract class HTTPServer implements Runnable, Closeable {
 							onRead(key);
 						}
 						catch (IOException ioe) {
-							System.err.print(ioe);
+							ioe.printStackTrace();
 							
 							try {
 								closeRequest((Connection)key.attachment());
 							} catch (IOException ioe2) {
-								System.err.print(ioe2);
+								ioe2.printStackTrace();
 							}
 						}
 					}
@@ -179,13 +179,13 @@ public abstract class HTTPServer implements Runnable, Closeable {
 		try {
 			this.selector.close();
 		} catch (IOException ioe) {
-			System.err.print(ioe);
+			ioe.printStackTrace();
 		}
 		
 		try {
 			this.listener.close();
 		} catch (IOException ioe) {
-			System.err.print(ioe);
+			ioe.printStackTrace();
 		}
 	}
 	

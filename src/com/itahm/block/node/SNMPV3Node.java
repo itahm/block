@@ -10,7 +10,7 @@ import org.snmp4j.mp.SnmpConstants;
 import org.snmp4j.smi.OctetString;
 import org.snmp4j.smi.UdpAddress;
 
-public class SNMPV3Node extends SNMPNode<UdpAddress> {
+public class SNMPV3Node extends SNMPNode {
 
 	public SNMPV3Node(Snmp snmp, long id, String ip, int udp, String user, int level)
 			throws IOException {

@@ -9,9 +9,12 @@ public class ICMPNode extends Node {
 	private final InetAddress ip;
 	
 	public ICMPNode(long id, String ip) throws UnknownHostException {
-		super(id);
+		this(id, ip, String.format("ICMPNode %s", ip));
 		
-		super.thread.setName(String.format("ICMPNode %s", ip));
+	}
+	
+	public ICMPNode(long id, String ip, String name) throws UnknownHostException {
+		super(id, name);
 		
 		this.ip = InetAddress.getByName(ip);
 	}
@@ -25,4 +28,5 @@ public class ICMPNode extends Node {
 			return false;
 		}
 	}
+	
 }

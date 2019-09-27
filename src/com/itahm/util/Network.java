@@ -9,9 +9,12 @@ public class Network {
 	private int mask = 0;
 	private int start; 
 	private int remains;
+	private String suffix;
 	
 	public Network(byte [] network, int mask) throws IOException {
 		int count = 0;
+		
+		suffix = Integer.toString(mask);
 		
 		for (int i=0, _i=network.length; i<_i; i++) {
 			this.network = this.network << 8;
@@ -58,6 +61,10 @@ public class Network {
 			}
 		};
 	}
-	
+
+	@Override
+	public String toString() {
+		return String.format("%s/%s",toIPString(this.network), this.suffix);
+	}
 
 }

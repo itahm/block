@@ -6,23 +6,31 @@ import java.util.ArrayList;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 
+import com.itahm.util.Listenable;
 import com.itahm.util.Listener;
 
-abstract public class Node implements Runnable, Closeable {
+abstract public class Node implements Runnable, Closeable, Listenable {
 
 	public final long id;
-	protected boolean isClosed = false;
-	protected int
-		timeout = 5000,
-		retry = 1;
+	protected Boolean isClosed = false;
+	protected int timeout = 5000;
+	protected int retry = 1;
 	protected final Thread thread;
 	private final BlockingQueue<Long> queue = new LinkedBlockingQueue<>();
 	private final ArrayList<Listener> listenerList = new ArrayList<>();
 	
 	public Node(long id) {
+		this(id, String.format("Node [%d]", id));
+	}
+	
+	public Node(long id, String name) {
 		this.id = id;
 		
 		thread = new Thread(this);
+		
+		thread.setName(name);
+		
+		thread.setDaemon(true);
 		thread.start();
 	}
 
@@ -38,11 +46,11 @@ abstract public class Node implements Runnable, Closeable {
 					Thread.sleep(delay);
 				}
 				else if (delay < 0) {
-					throw new InterruptedException();
+					break loop;
 				}
 				
 				for (int i=-1; i<this.retry; i++) {
-					if (this.thread.isInterrupted()) {
+					if (this.isClosed) {
 						break loop;
 					}
 					
@@ -55,38 +63,40 @@ abstract public class Node implements Runnable, Closeable {
 							continue loop;
 						}
 					} catch (IOException ie) {
-						System.err.print(ie);
+						ie.printStackTrace();
 					}
 				}
 				
-				fireEvent(Event.PING, -1);
+				fireEvent(Event.PING, Long.valueOf(-1));
 			} catch (InterruptedException ie) {
-				if (!this.isClosed) {
-					System.err.print(ie);
-				}
-				
 				break;
 			}
 		}
 	}
 	
+	@Override
 	public void addEventListener(Listener listener) {
 		this.listenerList.add(listener);
 	}
 	
+	@Override
 	public void removeEventListener(Listener listener) {
 		this.listenerList.remove(listener);
 	}
 
+	@Override
 	public void fireEvent(Object ...args) {
 		for (Listener listener: this.listenerList) {
 			listener.onEvent(this, args);
 		}
 	}
 	
-	public void setHealth(int timeout, int retry) {
-		this.timeout = timeout;
-		this.retry = retry;
+	public void setTimeout(int i) {
+		this.timeout = i;
+	}
+	
+	public void setRetry(int i) {
+		this.retry = i;
 	}
 	
 	public void ping(long delay) {
@@ -103,16 +113,22 @@ abstract public class Node implements Runnable, Closeable {
 	}
 	
 	public void close(boolean wait) {
-		this.isClosed = true;
-		
-		this.thread.interrupt();
-		
-		if (wait) {
-			try {
-				this.thread.join();
-			} catch (InterruptedException ie) {
-				this.thread.interrupt();
+		synchronized (this.isClosed) {
+			if (this.isClosed) {
+				return;
 			}
+			
+			this.isClosed = true;
+		}
+		
+		try {
+			this.queue.put(-1L);
+			
+			if (wait) {
+				this.thread.join();
+			}
+		} catch (InterruptedException ie) {
+			this.thread.interrupt();
 		}
 	}
 	

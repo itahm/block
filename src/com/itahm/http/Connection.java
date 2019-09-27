@@ -84,7 +84,7 @@ public class Connection implements Closeable {
 				try {
 					listener.closeRequest(request);
 				} catch (IOException ioe) {
-					System.err.print(ioe);
+					ioe.printStackTrace();
 				}
 			}
 		};
@@ -204,7 +204,7 @@ public class Connection implements Closeable {
 		try {
 			request = new Request(this.startLine, this.header, this.body.toByteArray());
 		} catch (IOException ioe) {
-			System.err.print(ioe);
+			ioe.printStackTrace();
 			
 			return null;
 		}
@@ -316,7 +316,7 @@ public class Connection implements Closeable {
 			return getSession(true);
 		}
 		
-		@Override
+		/*
 		public Session getSession(boolean create) {
 			if (this.session != null) {
 				return this.session;
@@ -330,9 +330,27 @@ public class Connection implements Closeable {
 				this.session.update();
 			}
 			else if (create) {
-				this.session = this.cookie == null? new Session(): new Session(this.cookie);
+				this.session = new Session();
 			}
 			
+			return this.session;
+		}
+		*/
+		@Override
+		public Session getSession(boolean create) {
+			if (this.session == null) {
+				if (this.cookie != null) {
+					this.session = Session.find(this.cookie);
+				}
+				
+				if (this.session != null) {
+					this.session.update();
+				}
+				else if (create) {
+					this.session = new Session();
+				}
+			}
+
 			return this.session;
 		}
 		

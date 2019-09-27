@@ -1,8 +1,6 @@
 package com.itahm;
 
 import java.io.IOException;
-import java.io.OutputStream;
-import java.io.PrintStream;
 import java.io.UnsupportedEncodingException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -21,17 +19,23 @@ import com.itahm.json.JSONObject;
 import com.itahm.license.Expire;
 import com.itahm.util.Listener;
 import com.itahm.util.Util;
-import com.itahm.block.Agent;
+import com.itahm.block.Commander;
+import com.itahm.block.H2Agent;
 import com.itahm.block.SMTP;
 
 public class ITAhM extends HTTPServer implements Listener {
+	private enum Status {
+		READY, RUN, STOP;
+	};
+	
 	private byte [] event = null;
 	private final static int SESS_TIMEOUT = 3600;
-	private final static String VERSION = "CeMS v1.0"; 
+	private final static String VERSION = "CeMS v1.0";
 	private final Path root;
+	private Status agentStatus = Status.READY;
 	public final int limit;
 	public final long expire;
-	private Agent agent;
+	private Commander agent;
 	private SMTP smtp;
 	
 	private ITAhM(Builder builder) throws Exception {
@@ -46,11 +50,16 @@ public class ITAhM extends HTTPServer implements Listener {
 		if (expire > 0 && new Expire(expire, this).isExpired()) {
 			throw new Exception("Check your License.Expire");
 		}
-		
-		agent = new Agent(root.resolve("data"));
+
+		agent = new H2Agent(root.resolve("data"));
 		
 		agent.addEventListener(this);
 		
+		agent.start();
+		
+		synchronized(agentStatus) {
+			agentStatus = Status.RUN;
+		}
 		// TODO sms, app 을 위한 리스너 등록
 		//agent.addEventListener();
 	}
@@ -149,14 +158,8 @@ public class ITAhM extends HTTPServer implements Listener {
 			response.setHeader("Access-Control-Allow-Credentials", "true");
 		}
 		
-		if (agent == null) {
-			response.setStatus(Response.Status.UNAVAILABLE);
-			
-			return;
-		}
-		
 		JSONObject data;
-		
+		String command;
 		try {
 			data = new JSONObject(new String(request.read(), StandardCharsets.UTF_8.name()));
 			
@@ -164,12 +167,48 @@ public class ITAhM extends HTTPServer implements Listener {
 				throw new JSONException("Command not found.");
 			}
 			
+			command = data.getString("command").toUpperCase();
+			
 			Session session = request.getSession(false);
 			
-			switch (data.getString("command").toLowerCase()) {
-			case "signin":
+			synchronized(this.agentStatus) {
+				if (this.agentStatus == Status.STOP) {
+					if ("START".equals(command)) {
+						if (session == null) {
+							response.setStatus(Response.Status.UNAUTHORIZED);
+						}
+						else {
+							this.agentStatus = Status.READY;
+							
+							try {
+								this.agent = new H2Agent(this.root.resolve("data"));
+								
+								this.agent.addEventListener(this);
+								
+								this.agentStatus = Status.RUN;
+							} catch (Exception e) {
+								e.printStackTrace();
+								
+								response.setStatus(Response.Status.SERVERERROR);
+							}
+						}
+					} else {
+						response.setStatus(Response.Status.UNAVAILABLE);
+					}
+					
+					return;
+				}
+				else if (this.agentStatus == Status.READY) {
+					response.setStatus(Response.Status.UNAVAILABLE);
+					
+					return;
+				}
+			}
+			
+			switch (command) {
+			case "SIGNIN":
 				if (session == null) {
-					JSONObject account = this.agent.getAccountByUsername(data.getString("username"));
+					JSONObject account = this.agent.getAccount(data.getString("username"));
 					
 					if (account == null || !account.getString("password").equals(data.getString("password"))) {
 						response.setStatus(Response.Status.UNAUTHORIZED);
@@ -189,22 +228,22 @@ public class ITAhM extends HTTPServer implements Listener {
 				
 				break;
 				
-			case "signout":
+			case "SIGNOUT":
 				if (session != null) {
 					session.invalidate();
 				}
 				
 				break;
 				
-			case "listen":
+			case "LISTEN":
 				if (session == null) {
 					response.setStatus(Response.Status.UNAUTHORIZED);
 				}
 				else {
 					JSONObject event = null;
 					
-					if (data.has("event")) {
-						event = this.agent.getEventByID(data.getLong("event"));
+					if (data.has("eventID")) {
+						event = this.agent.getEvent(data.getLong("eventID"));
 					}
 					
 					if (event == null) {
@@ -223,12 +262,25 @@ public class ITAhM extends HTTPServer implements Listener {
 				}
 				
 				break;
+			case "STOP":
+				if (session == null) {
+					response.setStatus(Response.Status.UNAUTHORIZED);
+				}
+				else {
+					synchronized (this.agentStatus) {
+						this.agentStatus = Status.STOP;
+					}
+					
+					this.agent.close();
+				}
+				
+				break;
 				
 			default:
 				if (session == null) {
 					response.setStatus(Response.Status.UNAUTHORIZED);
 				}
-				else if (!parseRequest(data, response)) {
+				else if (!parseRequest(command, data, response)) {
 					throw new JSONException("Command not found.");
 				}
 			}
@@ -242,43 +294,53 @@ public class ITAhM extends HTTPServer implements Listener {
 	}
 	
 	public void close() {
+		synchronized (this.agentStatus) {
+			if (this.agentStatus != Status.STOP) {
+				this.agentStatus = Status.STOP;
+				
+				this.agent.close();
+			}
+		}
+		
 		try {
 			super.close();
 		} catch (IOException ioe) {
-			System.err.print(ioe);
+			ioe.printStackTrace();
 		}
 	}
 	
 	@Override
-	public void onEvent(Object caller, Object ...event) {
-		if (caller instanceof Expire) {
-			
+	public void onEvent(Object caller, Object ...args) {
+		JSONObject event = null;
+		
+		if (caller instanceof Commander) {
+			event = (JSONObject)args[0];
+		}
+		else if (caller instanceof Expire) {
+			System.out.println("Check your License.Expire");
+			// TODO 서비스가 시작되기 전에, 서비스 시작 도중에 이벤트 발생하는 경우의 수를 따져서 코드가 꼬이지 않게 종료시켜 주어야 한다.
+			close();
 		}
 		else if (caller instanceof SMTP) {
 			
 		}
 		
 		if (event == null) {
-			System.out.println("Check your License.Expire");
-			// TODO 서비스가 시작되기 전에, 서비스 시작 도중에 이벤트 발생하는 경우의 수를 따져서 코드가 꼬이지 않게 종료시켜 주어야 한다.
-			close();
+			return;
 		}
-		else {
-			synchronized(this) {
-				JSONObject e = (JSONObject)event[0];
+		
+		synchronized(this) {
+			try {
+				this.event = event.toString().getBytes(StandardCharsets.UTF_8.name());
 				
-				try {
-					this.event = e.toString().getBytes(StandardCharsets.UTF_8.name());
-					
-					notifyAll();
-				} catch (UnsupportedEncodingException uee) {}			
-			}
+				notifyAll();
+			} catch (UnsupportedEncodingException uee) {}			
 		}
 	}
 	
-	private boolean parseRequest(JSONObject request, Response response) {
+	private boolean parseRequest(String command, JSONObject request, Response response) {
 		try {
-			switch(request.getString("command").toUpperCase()) {
+			switch(command) {
 			case "ADD":
 				add(request, response);
 				
@@ -319,8 +381,7 @@ public class ITAhM extends HTTPServer implements Listener {
 		} catch (Exception e) {
 			response.write(new JSONObject().
 				put("error", e.getMessage()).toString());
-			System.out.println(e.getMessage());
-			System.err.print(e);
+			e.printStackTrace();
 			response.setStatus(Response.Status.SERVERERROR);
 		}
 		
@@ -336,7 +397,9 @@ public class ITAhM extends HTTPServer implements Listener {
 			
 			break;
 		case "ICON":
-			success = this.agent.addIcon(request.getString("type"), request.getJSONObject("icon"));
+			if (this.agent.addIcon(request.getString("type"), request.getJSONObject("icon")) == null) {
+				response.setStatus(Response.Status.CONFLICT);
+			}
 			
 			break;
 		case "LINK":
@@ -346,8 +409,13 @@ public class ITAhM extends HTTPServer implements Listener {
 			break;
 			
 		case "NODE":
-			if (this.agent.addNode(request.getJSONObject("node")) == null) {
+			JSONObject node = this.agent.addNode(request.getJSONObject("node"));
+			
+			if (node == null) {
 				response.setStatus(Response.Status.CONFLICT);
+			}
+			else {
+				response.write(node.toString());
 			}
 			
 			break;
@@ -358,7 +426,9 @@ public class ITAhM extends HTTPServer implements Listener {
 			
 			break;
 		case "PROFILE":
-			this.agent.addProfile(request.getString("name"), request.getJSONObject("profile"));
+			if (!this.agent.addProfile(request.getString("name"), request.getJSONObject("profile"))) {
+				response.setStatus(Response.Status.CONFLICT);
+			}
 			
 			break;
 		case "USER":
@@ -379,25 +449,31 @@ public class ITAhM extends HTTPServer implements Listener {
 		
 		switch(request.getString("target").toUpperCase()) {
 		case "ACCOUNT":
-			success = this.agent.setAccount(request.getString("key"), request.getJSONObject("value"));
+			if (!this.agent.setAccount(request.getString("username"), request.getJSONObject("account"))) {
+				response.setStatus(Response.Status.CONFLICT);
+			}
 			
 			break;
 		case "CONFIG":
 			switch (request.getString("key")) {
-			case "storeDate":
-				success = this.agent.setStoreDate(Integer.valueOf(request.getString("value")));
+			case "retry": 
+				if (!this.agent.setRetry(request.getInt("value"))) {
+					response.setStatus(Response.Status.SERVERERROR);
+				}
 				
 				break;
-			case "health": 
-				success = this.agent.setHealth(Integer.valueOf(request.getString("value")));
+			case "storeDate":
+				success = this.agent.setStoreDate(Integer.valueOf(request.getString("value")));
 				
 				break;
 			case "saveInterval": 
 				success = this.agent.setSaveInterval(Integer.valueOf(request.getString("value")));
 				
 				break;
-			case "smpInterval": 
-				success = this.agent.setSNMPInterval(Long.valueOf(request.getString("value")));
+			case "requestInterval": 
+				if (!this.agent.setRequestInterval(request.getLong("value"))) {
+					response.setStatus(Response.Status.SERVERERROR);
+				}
 				
 				break;
 			case "snmpServer":
@@ -405,7 +481,7 @@ public class ITAhM extends HTTPServer implements Listener {
 					try {
 						this.smtp.close();
 					} catch (IOException ioe) {
-						System.err.print(ioe);
+						ioe.printStackTrace();
 					}
 				}
 				
@@ -414,24 +490,28 @@ public class ITAhM extends HTTPServer implements Listener {
 				success = true;
 				
 				break;
-			case "topCount": 
-				success = this.agent.setTopCount(Integer.valueOf(request.getString("value")));
-				
+			case "timeout": 
+				if (!this.agent.setTimeout(request.getInt("value"))) {
+					response.setStatus(Response.Status.SERVERERROR);
+				}
+			
 				break;
 			default:
 				success = false;
 			}
 			break;
 		case "CRITICAL":
-			success = this.agent.setCritical(request.getString("key"), request.getJSONObject("value"));
+			success = this.agent.setCritical(request.getLong("id"), request.getJSONObject("critical"));
 			
 			break;
 		case "ICON":
-			success = this.agent.setIcon(request.getString("key"), request.getJSONObject("value"));
+			if (!this.agent.setIcon(request.getString("type"), request.getJSONObject("icon"))) {
+				response.setStatus(Response.Status.CONFLICT);
+			}
 			
 			break;
 		case "LINK":
-			if (!this.agent.setLink(request.getLong("nodeFrom"), request.getLong("nodeTo"), request.getLong("id"),request.getJSONObject("link"))) {
+			if (!this.agent.setLink(request.getLong("nodeFrom"), request.getLong("nodeTo"),request.getJSONObject("link"))) {
 				response.setStatus(Response.Status.CONFLICT);
 			}
 			
@@ -442,18 +522,20 @@ public class ITAhM extends HTTPServer implements Listener {
 			}
 			
 			break;
-		case "MONOTOR":
-			success = this.agent.setMonitor(request.getLong("id"), request.getString("protocol"));
+		case "MONITOR":
+			if (!this.agent.setMonitor(request.getLong("id"), request.getString("ip"), request.has("protocol")? request.getString("protocol"): null)) {
+				response.setStatus(Response.Status.CONFLICT);
+			}
 			
 			break;
 		case "NODE":
-			if (!this.agent.setNode(request.getLong("key"), request.getJSONObject("value"))) {
+			if (!this.agent.setNode(request.getLong("id"), request.getJSONObject("node"))) {
 				response.setStatus(Response.Status.SERVERERROR);
 			}
 			
 			break;
 		case "POSITION":
-			success = this.agent.setPosition(request.getString("key"), request.getJSONObject("value"));
+			success = this.agent.setPosition(request.getString("name"), request.getJSONObject("position"));
 			
 			break;
 		case "SETTING":
@@ -463,15 +545,15 @@ public class ITAhM extends HTTPServer implements Listener {
 			
 			break;
 		case "SPEED":
-			success = this.agent.setCritical(request.getString("key"), request.getJSONObject("value"));
+			success = this.agent.setSpeed(request.getLong("id"), request.getJSONObject("speed"));
 			
 			break;
 		case "UPDOWN":
-			success = this.agent.setCritical(request.getString("key"), request.getJSONObject("value"));
+			success = this.agent.setCritical(request.getLong("id"), request.getJSONObject("updown"));
 			
 			break;
 		case "USER":
-			success = this.agent.setUser(request.getString("key"), request.getJSONObject("value"));
+			success = this.agent.setUser(request.getString("name"), request.getJSONObject("user"));
 			
 			break;
 		default:
@@ -485,46 +567,52 @@ public class ITAhM extends HTTPServer implements Listener {
 	}
 	
 	private void remove(JSONObject request, Response response) {
-		boolean success = true;
-		
 		switch(request.getString("target").toUpperCase()) {
 		case "ACCOUNT":
-			success = this.agent.removeAccount(request.getString("username"));
+			if(!this.agent.removeAccount(request.getString("username"))) {
+				response.setStatus(Response.Status.CONFLICT);
+			}
 			
 			break;
 		case "ICON":
-			success = this.agent.removeIcon(request.getString("key"));
+			if (!this.agent.removeIcon(request.getString("type"))) {
+				response.setStatus(Response.Status.CONFLICT);
+			}
 			
 			break;
 		case "LINK":
-			if (this.agent.removeLink(request.getLong("nodeFrom"), request.getLong("nodeTo"), request.getLong("id")) == null) {
+			if (!this.agent.removeLink(request.getLong("id"))) {
 				response.setStatus(Response.Status.CONFLICT);
 			};
 			
 			break;
-		case "MONOTOR":
-			success = this.agent.removeMonitor(request.getLong("key"));
+		case "NODE":
+			if (!this.agent.removeNode(request.getLong("id"))) {
+				response.setStatus(Response.Status.CONFLICT);
+			}
 			
 			break;
-		case "NODE":
-			success = this.agent.removeNode(request.getLong("key"));
+		case "PATH":
+			if (!this.agent.removePath(request.getLong("nodeFrom"), request.getLong("nodeTo"))) {
+				response.setStatus(Response.Status.CONFLICT);
+			}
 			
 			break;
 		case "PROFILE":
-			success = this.agent.removeProfile(request.getString("key"));
+			if (!this.agent.removeProfile(request.getString("name"))) {
+				response.setStatus(Response.Status.CONFLICT);
+			}
 			
 			break;
 		case "USER":
-			success = this.agent.removeUser(request.getString("key"));
+			if (!this.agent.removeUser(request.getString("name"))) {
+				response.setStatus(Response.Status.CONFLICT);
+			}
 			
 			break;
 		default:
 			
 			throw new JSONException("Target is not found.");
-		}
-		
-		if (!success) {
-			
 		}
 	}
 	
@@ -559,9 +647,17 @@ public class ITAhM extends HTTPServer implements Listener {
 	private JSONObject get(String target, JSONObject request) {
 		switch(target.toUpperCase()) {
 		case "ACCOUNT":
-			return request.has("username")? this.agent.getAccountByUsername(request.getString("username")): this.agent.getAccount();
-		case "CONFIG": return request.has("key")? this.agent.getConfigByKey(request.getString("key")): this.agent.getConfig();
-		case "ICON": return request.has("type")? this.agent.getIconByType(request.getString("type")): this.agent.getIcon();
+			return request.has("username")?
+				this.agent.getAccount(request.getString("username")):
+				this.agent.getAccount();
+		case "CONFIG":
+			return this.agent.getConfig();
+		case "EVENT":
+			return this.agent.getEventByDate(request.getLong("date"));
+		case "ICON":
+			return request.has("type")?
+				this.agent.getIcon(request.getString("type")):
+				this.agent.getIcon();
 		case "INFORMATION":
 			JSONObject result = this.agent.getInformation();
 			
@@ -573,19 +669,42 @@ public class ITAhM extends HTTPServer implements Listener {
 			try {
 				result.put("space", Files.getFileStore(this.root).getUsableSpace());
 			} catch (IOException ioe) {
-				System.err.print(ioe);
+				ioe.printStackTrace();
 			}
 			
 			return result;
-		case "LINK": return request.has("nodeFrom")? this.agent.getLinkByNodeID(request.getLong("nodeFrom"), request.getLong("nodeTo")): this.agent.getLink();
-		case "LOG": return this.agent.getEventByDate(request.getLong("date"));
-		case "NODE": return request.has("id")? this.agent.getNodeByID(request.getLong("id"), request.has("snmp") && request.getBoolean("snmp")): this.agent.getNode();
-		case "PATH":return request.has("nodeFrom")? this.agent.getPathByNodeID(request.getLong("nodeFrom"), request.getLong("nodeTo")): this.agent.getPath();
-		case "POSITION": return this.agent.getPositionByName("position");
-		case "PROFILE": return this.agent.getProfile();
-		case "SETTING": return request.has("key")? this.agent.getSettingByKey(request.getString("key")): this.agent.getSetting();
-		case "TOP": return this.agent.getTop(request.getJSONObject("top"));
-		case "TRAFFIC": return this.agent.getTraffic(request.getJSONObject("traffic"));
+		case "LINK":
+			return request.has("nodeFrom")?
+				this.agent.getLink(request.getLong("nodeFrom"), request.getLong("nodeTo")):
+				this.agent.getLink();
+		case "LOG":
+			return this.agent.getEventByDate(request.getLong("date"));
+		case "NODE":
+			return request.has("id")?
+				this.agent.getNode(request.getLong("id"), request.has("resource") && request.getBoolean("resource")):
+				this.agent.getNode();
+		case "PATH":
+			return request.has("nodeFrom")?
+				this.agent.getPath(request.getLong("nodeFrom"), request.getLong("nodeTo")):
+				this.agent.getPath();
+		case "POSITION":
+			return this.agent.getPosition("position");
+		case "PROFILE":
+			return this.agent.getProfile();
+		case "RESOURCE":
+			return  this.agent.getResource(request.getLong("id"),
+					request.getInt("index"),
+					request.getString("oid"),
+					request.getLong("date"),
+					request.has("summary")? request.getBoolean("summary"): false);
+		case "SETTING":
+			return request.has("key")?
+				this.agent.getSetting(request.getString("key")):
+				this.agent.getSetting();
+		case "TOP":
+			return this.agent.getTop(request.getJSONArray("list"), request.getJSONObject("resource"));
+		case "TRAFFIC":
+			return this.agent.getTraffic(request.getJSONObject("traffic"));
 		
 		default:
 			
@@ -615,24 +734,7 @@ public class ITAhM extends HTTPServer implements Listener {
 				break;
 			}
 		}
-		
-		System.setErr(
-			new PrintStream(
-				new OutputStream() {
-
-					@Override
-					public void write(int b) throws IOException {
-					}	
-				}
-			) {
-		
-				@Override
-				public void print(Object e) {
-					((Exception)e).printStackTrace(System.out);
-				}
-			}
-		);
-		
+				
 		ITAhM itahm = builder
 				//.license("A402B93D8051")
 				.build();

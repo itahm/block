@@ -19,11 +19,7 @@ public class Session {
 	private TimerTask task;
 	
 	public Session() {
-		this(UUID.randomUUID().toString());
-	}
-	
-	public Session(String id) {
-		this.id = id;
+		this.id = UUID.randomUUID().toString();
 		
 		sessions.put(id, this);
 		

@@ -27,7 +27,7 @@ public class Message {
 			
 			return message;
 		} catch (MessagingException me) {
-			System.err.print(me);
+			me.printStackTrace();
 		}
 		
 		return null;
@@ -42,7 +42,7 @@ public class Message {
 			
 			return message;
 		} catch (MessagingException me) {
-			System.err.print(me);
+			me.printStackTrace();
 		}
 		
 		return null;
@@ -57,7 +57,7 @@ public class Message {
 			
 			return message;
 		} catch (MessagingException me) {
-			System.err.print(me);
+			me.printStackTrace();
 		}
 		
 		return null;
@@ -117,7 +117,7 @@ public class Message {
 		try {
 			this.message.setSubject(subject, "UTF-8");
 		} catch (MessagingException me) {
-			System.err.print(me);
+			me.printStackTrace();
 		}
 		
 		return this;
@@ -127,7 +127,7 @@ public class Message {
 		try {
 			this.message.setText(body, "UTF-8");
 		} catch (MessagingException me) {
-			System.err.print(me);
+			me.printStackTrace();
 		}
 		
 		return this;
