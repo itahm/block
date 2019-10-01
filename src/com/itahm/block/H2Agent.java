@@ -1,6 +1,7 @@
 package com.itahm.block;
 
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -18,6 +19,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import org.h2.jdbcx.JdbcConnectionPool;
 import org.snmp4j.mp.SnmpConstants;
+import org.snmp4j.smi.Gauge32;
 import org.snmp4j.smi.Integer32;
 import org.snmp4j.smi.OID;
 import org.snmp4j.smi.OctetString;
@@ -28,6 +30,8 @@ import com.itahm.block.Bean.Max;
 import com.itahm.block.Bean.Value;
 import com.itahm.block.Bean.Rule;
 import com.itahm.block.Bean.Config;
+import com.itahm.block.Bean.CriticalEvent;
+import com.itahm.block.Bean.Event;
 import com.itahm.block.SmartSearch.Profile;
 import com.itahm.block.node.PDUManager;
 import com.itahm.block.node.SeedNode.Arguments;
@@ -134,6 +138,7 @@ public class H2Agent implements Commander, Agent, Listener, Listenable {
 		ruleMap.put("1.3.6.1.4.1.49447.3.2", new Rule("1.3.6.1.4.1.49447.3.2", "outBPS", "INTEGER", true, false));
 		ruleMap.put("1.3.6.1.4.1.49447.3.3", new Rule("1.3.6.1.4.1.49447.3.3", "inErrs", "INTEGER", true, false));
 		ruleMap.put("1.3.6.1.4.1.49447.3.4", new Rule("1.3.6.1.4.1.49447.3.4", "outErrs", "INTEGER", true, false));
+		ruleMap.put("1.3.6.1.4.1.49447.3.5", new Rule("1.3.6.1.4.1.49447.3.5", "bandwidth", "INTEGER", true, false));
 	}
 	
 	public H2Agent (Path path) throws Exception {
@@ -206,6 +211,19 @@ public class H2Agent implements Commander, Agent, Listener, Listenable {
 						}
 					}
 				}
+				/**END**/
+				
+				/**
+				 * CRITICAL
+				 */
+				try (Statement stmt = c.createStatement()) {
+					stmt.executeUpdate("CREATE TABLE IF NOT EXISTS critical"+
+						" (id BIGINT PRIMARY KEY"+
+						", oid VARCHAR NOT NULL"+
+						", _index VARCHAR NOT NULL"+
+						", rate INT NOT NULL);");
+				}
+				
 				/**END**/
 				
 				/**
@@ -387,14 +405,22 @@ public class H2Agent implements Commander, Agent, Listener, Listenable {
 						", oid VARCHAR NOT NULL"+
 						", _index VARCHAR NOT NULL"+
 						", value VARCHAR NOT NULL"+
+						", _limit INT DEFAULT 0"+
+						", critical BOOLEAN DEFAULT FALSE"+
 						", timestamp BIGINT DEFAULT NULL"+
 						", UNIQUE(id, oid, _index));");
 				}
 				
 				try (Statement stmt = c.createStatement()) {
-					try (ResultSet rs = stmt.executeQuery("SELECT id, oid, _index, value, timestamp FROM resource")) {
-						while (rs.next()) {
-							setResource(rs.getLong(1), rs.getString(2), rs.getString(3), rs.getString(4), rs.getLong(5));
+					try (ResultSet rs = stmt.executeQuery("SELECT id, _index, oid, value, _limit, critical, timestamp"+
+						" FROM resource;")) {
+						Value v;
+						
+						while (rs.next()) {						
+							v = mergeResource(rs.getLong(1), rs.getString(2), rs.getString(3), rs.getString(4), rs.getLong(7));
+							
+							v.limit = rs.getInt(5);
+							v.critical = rs.getBoolean(6);
 						}
 					}
 				}
@@ -734,12 +760,6 @@ public class H2Agent implements Commander, Agent, Listener, Listenable {
 	}
 
 	@Override
-	public void getDataByID(long id) {
-		// TODO Auto-generated method stub
-		
-	}
-
-	@Override
 	public JSONObject getEvent(long eventID) {
 		try (Connection c =  this.connPool.getConnection()) {
 			try (PreparedStatement pstmt = c.prepareStatement("SELECT id, timestamp, origin, level, message, name FROM event WHERE event_id=?;")) {
@@ -863,30 +883,31 @@ public class H2Agent implements Commander, Agent, Listener, Listenable {
 	public JSONObject getInformation() {
 		Calendar c = Calendar.getInstance();
 		JSONObject body = new JSONObject();
-		String fileName;
 		
 		c.set(Calendar.DATE, c.get(Calendar.DATE) -1);
 		
 		try {
-		fileName = String.format("%04d-%02d-%02d.mv.db",
+			body.put("usage", Files.size(this.root.resolve(String.format("%04d-%02d-%02d.mv.db",
 				c.get(Calendar.YEAR),
 				c.get(Calendar.MONTH) +1,
-				c.get(Calendar.DAY_OF_MONTH));
-		
-			body.put("usage", Util.getDirectorySize(root, fileName));
+				c.get(Calendar.DAY_OF_MONTH)))));
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
 		
-		/*
-		body
-			.put("version", Agent.Config.version)
-			.put("load", Agent.node().calcLoad())
-			.put("resource", Agent.node().getResourceCount())
-			.put("usage", Util.getDirectorySize(root.toPath().resolve("node"), Long.toString(c.getTimeInMillis())))
-			.put("path", root.getAbsoluteFile().toString())
-			.put("expire", Agent.Config.expire());
-		 */
+		Map<String, Map<String, Value>> indexMap;
+		long size = 0;
+		
+		for (Long id : this.resourceMap.keySet()) {
+			indexMap = this.resourceMap.get(id);
+			
+			for (String index : indexMap.keySet()) {
+				size += indexMap.get(index).size();
+			}
+		}
+		
+		body.put("resource", size);
+		
 		return body;
 	}
 
@@ -1003,8 +1024,13 @@ public class H2Agent implements Commander, Agent, Listener, Listenable {
 				long id;
 				boolean status;
 				
-				try (ResultSet rs = stmt.executeQuery("SELECT n.id, name, type, n.ip, label, m.protocol, m.status"+
-					" FROM node AS n LEFT JOIN monitor AS m ON n.id=m.id;")) {
+				try (ResultSet rs = stmt.executeQuery("SELECT n.id, name, type, n.ip, label, m.protocol, m.status, COUNT(critical)"+
+						" FROM node AS n"+
+						" LEFT JOIN monitor AS m"+
+						" ON n.id=m.id"+
+						" LEFT JOIN resource AS r"+
+						" ON n.id=r.id AND r.critical=TRUE"+
+						" GROUP BY n.id;")) {
 					while (rs.next()) {
 						id = rs.getLong(1);
 						
@@ -1037,6 +1063,10 @@ public class H2Agent implements Commander, Agent, Listener, Listenable {
 							node.put("status", status);
 						}
 						
+						if (rs.getLong(8) > 0) {
+							node.put("critical", true);
+						}
+						
 						nodeData.put(Long.toString(rs.getLong(1)), node);
 					}
 				}
@@ -1049,7 +1079,7 @@ public class H2Agent implements Commander, Agent, Listener, Listenable {
 		
 		return null;
 	}
-
+	
 	@Override
 	public JSONObject getNode(long id, boolean resource) {
 		JSONObject node = new JSONObject();
@@ -1105,7 +1135,7 @@ public class H2Agent implements Commander, Agent, Listener, Listenable {
 					Map<String, Value> oidMap;
 					Value v;
 					
-					for (String index : indexMap.keySet()) { //TODO null pointer
+					for (String index : indexMap.keySet()) {
 						oidMap = indexMap.get(index);
 						
 						snmpData.put(index, indexData = new JSONObject());
@@ -1504,10 +1534,7 @@ public class H2Agent implements Commander, Agent, Listener, Listenable {
 	}
 	
 	public void informPingEvent(long id, long rtt, String protocol) {
-		String
-			name,
-			message;
-		Boolean old = this.statusMap.get(id);
+		Boolean oldStatus = this.statusMap.get(id);
 		boolean status = rtt > -1;
 		Calendar calendar = Calendar.getInstance();
 		
@@ -1533,12 +1560,27 @@ public class H2Agent implements Commander, Agent, Listener, Listenable {
 						pstmt.executeUpdate();
 					}
 					
-					setResource(id, oid, index, value, timestamp);
+					mergeResource(id, index, oid, value, timestamp);
 					
 					Map<String, Map<String, Value>> indexMap = this.resourceMap.get(id);
 					
 					if (indexMap != null) {
-						Parser.RESPONSETIME.getInstance().parse(id, index, indexMap.get(index));
+						CriticalEvent event = Parser.RESPONSETIME.getInstance().parse(id, index, indexMap.get(index));
+						
+						if (event != null) {
+							try (PreparedStatement pstmt = c.prepareStatement("UPDATE resource"+
+								" SET critical=?"+
+								" WHERE id=? AND _index=? AND oid=?;")) {
+								pstmt.setBoolean(1, event.critical);
+								pstmt.setLong(2, event.id);
+								pstmt.setString(3, event.index);
+								pstmt.setString(4, event.oid);
+								
+								pstmt.executeUpdate();
+							}
+							
+							sendEvent(event);
+						}
 					}
 				}
 			} catch(SQLException sqle) {
@@ -1549,115 +1591,98 @@ public class H2Agent implements Commander, Agent, Listener, Listenable {
 			Parser.RESPONSETIME.getInstance().reset(id);
 		}
 		
-		if (old == null || status == old) {
-			return;
-		}
-		
-		try(Connection c = this.connPool.getConnection()) {
-			try (PreparedStatement pstmt = c.prepareStatement("SELECT name, ip FROM node WHERE id=?;")) {
-				pstmt.setLong(1, id);
-				
-				try (ResultSet rs = pstmt.executeQuery()) {
-					if (!rs.next()) {
-						return;
-					}
+		if (oldStatus != null && status != oldStatus) {
+			try(Connection c = this.connPool.getConnection()) {
+				try (PreparedStatement pstmt = c.prepareStatement("UPDATE monitor SET status=? WHERE id=?;")) {
+					pstmt.setBoolean(1, status);
+					pstmt.setLong(2, id);
 					
-					name = rs.getString(1) != null? rs.getString(1): rs.getString(2) != null? rs.getString(2): "";
+					pstmt.executeUpdate();
 				}
-			}
-			
-			message = String.format("%s %s 응답 %s.", name, protocol.toUpperCase(), status? "정상": "없음");
-			
-			try (PreparedStatement pstmt = c.prepareStatement("UPDATE monitor SET status=? WHERE id=?;")) {
-				pstmt.setBoolean(1, status);
-				pstmt.setLong(2, id);
 				
-				pstmt.executeUpdate();
-			}
+				sendEvent(new Event("status", id, status?Event.NORMAL: Event.ERROR, String.format("응답 %s", status? "정상": "없음")));
 			
-			sendEvent("status", id, status? 0: 2, name, message);
-		
-			this.statusMap.put(id, status);
-		}
-		catch(SQLException sqle) {
-			sqle.printStackTrace();
+				this.statusMap.put(id, status);
+			} catch(SQLException sqle) {
+				sqle.printStackTrace();
+			}
 		}
 	}
 	
 	public void informSNMPEvent(long id, int code) {
-		String
-			name,
-			message;
-		Integer old = this.snmpMap.get(id);
+		Integer oldCode = this.snmpMap.get(id);
 		Map<String, Map<String, Value>> indexMap = this.resourceMap.get(id);
 		
-		if (indexMap != null) {
-			if (code == SnmpConstants.SNMP_ERROR_SUCCESS) {
-				Parseable parser;
+		if (indexMap == null) {
+			return;
+		}
+		
+		if (code == SnmpConstants.SNMP_ERROR_SUCCESS) {
+			Parseable parser;
+			CriticalEvent event;
+			for (Parser p : Parser.values()) {
+				parser = p.getInstance();
 				
-				for (Parser p : Parser.values()) {
-					parser = p.getInstance();
-					
-					if (!(parser instanceof ResponseTime)) {
-						for (String index : indexMap.keySet()) {
-							parser.parse(id, index, indexMap.get(index));
-							
-							if (parser instanceof HRProcessorLoad) {
-								Integer load = ((HRProcessorLoad)parser).getLoad(id);
-								
-								if (load != null) {
-									this.informResourceEvent(id, new OID("1.3.6.1.2.1.25.3.3.1.2"), new OID("0"), new Integer32(load));
+				if (!(parser instanceof ResponseTime)) {
+					for (String index : indexMap.keySet()) {
+						event = parser.parse(id, index, indexMap.get(index));
+						
+						if (event != null) {
+							try(Connection c = this.connPool.getConnection()) {
+								try (PreparedStatement pstmt = c.prepareStatement("UPDATE resource"+
+									" SET critical=?"+
+									" WHERE id=? AND _index=? AND oid=?;")) {
+									pstmt.setBoolean(1, event.critical);
+									pstmt.setLong(2, event.id);
+									pstmt.setString(3, event.index);
+									pstmt.setString(4, event.oid);
+									
+									pstmt.executeUpdate();
 								}
+								
+								sendEvent(event);
+							}catch(SQLException sqle) {
+								sqle.printStackTrace();
+							}
+						}
+						
+						if (parser instanceof HRProcessorLoad) {
+							Integer load = ((HRProcessorLoad)parser).getLoad(id);
+							
+							if (load != null) {
+								this.informResourceEvent(id, new OID("1.3.6.1.2.1.25.3.3.1.2"), new OID("0"), new Integer32(load));
 							}
 						}
 					}
-					
-					parser.submit(id);
 				}
+				
+				parser.submit(id);
 			}
-			else {
-				for (Parser parser : Parser.values()) {
-					if (!parser.equals(Parser.RESPONSETIME)) {
-						parser.getInstance().reset(id);
-					}
+		}
+		else {
+			for (Parser parser : Parser.values()) {
+				if (!parser.equals(Parser.RESPONSETIME)) {
+					parser.getInstance().reset(id);
 				}
 			}
 		}
 	
-		if (old == null || old == code) {
-			return;
-		}
-		
-		try(Connection c = this.connPool.getConnection()) {
-			try (PreparedStatement pstmt = c.prepareStatement("SELECT name, ip FROM node WHERE id=?;")) {
-				pstmt.setLong(1, id);
-				
-				try (ResultSet rs = pstmt.executeQuery()) {
-					if (!rs.next()) {
-						return;
-					}
+		if (oldCode != null && oldCode != code) {
+			try(Connection c = this.connPool.getConnection()) {			
+				try (PreparedStatement pstmt = c.prepareStatement("UPDATE monitor SET snmp=? WHERE id=?;")) {
+					pstmt.setInt(1, code);
+					pstmt.setLong(2, id);
 					
-					name = rs.getString(1) != null? rs.getString(1): rs.getString(2) != null? rs.getString(2): "";
+					pstmt.executeUpdate();
 				}
-			}
-			
-			message = String.format("%s SNMP 응답 %s.", name, code == SnmpConstants.SNMP_ERROR_SUCCESS? "정상":
-				code == SnmpConstants.SNMP_ERROR_TIMEOUT? "없음":
-				("오류코드 "+ code));
-			
-			try (PreparedStatement pstmt = c.prepareStatement("UPDATE monitor SET snmp=? WHERE id=?;")) {
-				pstmt.setInt(1, code);
-				pstmt.setLong(2, id);
 				
-				pstmt.executeUpdate();
+				sendEvent(new Event("snmp", id, code == 0? Event.NORMAL: Event.WARNING,
+					String.format("SNMP %s", code == 0? "응답 정상": String.format("오류코드 %d", code))));
+				
+				this.snmpMap.put(id, code);
+			} catch(SQLException sqle) {
+				sqle.printStackTrace();
 			}
-			
-			sendEvent("snmp", id, code == 0? 0: 1, name, message);
-			
-			this.snmpMap.put(id, code);
-		}
-		catch(SQLException sqle) {
-			sqle.printStackTrace();
 		}
 	}
 	
@@ -1666,19 +1691,33 @@ public class H2Agent implements Commander, Agent, Listener, Listenable {
 		String
 			oid = requestOID.toDottedString(),
 			index = indexOID.toDottedString(),
-			tmp,
 			value;
 		Rule rule;
 		long timestamp = calendar.getTimeInMillis();
 		
-		for (Parser p : Parser.values()) {
-			tmp = p.getInstance().getOID(oid);
-			
-			if (tmp != null) {
-				oid = tmp;
+		switch (oid) {
+			case "1.3.6.1.4.1.9.2.1.5.6":
+			case "1.3.6.1.4.1.9.9.109.1.1.1.1.3" :
+			case "1.3.6.1.4.1.9.9.109.1.1.1.1.6" :
+			case "1.3.6.1.4.1.6296.9.1.1.1.8" :
+			case "1.3.6.1.4.1.37288.1.1.3.1.1" :
+				oid = "1.3.6.1.2.1.25.3.3.1.2";
 				
 				break;
-			}
+			case "1.3.6.1.2.1.31.1.1.1.15":
+				oid = "1.3.6.1.2.1.2.2.1.5";
+				
+				variable = new Gauge32(((Gauge32)variable).getValue() *1000000);
+				
+				break;
+			case "1.3.6.1.2.1.31.1.1.1.6":
+				oid = "1.3.6.1.2.1.2.2.1.10";
+				
+				break;
+			case "1.3.6.1.2.1.31.1.1.1.10":
+				oid = "1.3.6.1.2.1.2.2.1.16";
+				
+				break;
 		}
 		
 		rule = ruleMap.get(oid);
@@ -1729,72 +1768,46 @@ public class H2Agent implements Commander, Agent, Listener, Listenable {
 				pstmt.executeUpdate();
 			}
 			
-			setResource(id, oid, index, value, timestamp);
+			mergeResource(id, index, oid, value, timestamp);
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
 		}
 	}
 	
 	public void informTestEvent(long id, String ip, Protocol protocol, Object result) {
-		String
-			name,
-			message;
-		boolean status;
-			
-		try(Connection c = this.connPool.getConnection()) {			
-			try (PreparedStatement pstmt = c.prepareStatement("SELECT name FROM node WHERE id=?;")) {
-				pstmt.setLong(1, id);
-				
-				try (ResultSet rs = pstmt.executeQuery()) {
-					if (!rs.next()) {
-						return;
-					}
-					
-					name = rs.getString(1) == null? ip: rs.getString(1);
-				}
-			}
-			
+		try {
 			switch (protocol) {
 			case ICMP:
-				status = (Boolean)result;
-				
-				if (status && registerICMPNode(id, ip)) {
-					message = String.format("%s ICMP 등록 성공.", name);
+				if ((Boolean)result && registerICMPNode(id, ip)) {
+					sendEvent(new Event("register", id, Event.NORMAL, "ICMP 등록 성공."));
 				}
 				else {
-					
-					message = String.format("%s ICMP 등록 실패.", name);
+					sendEvent(new Event("register", id, Event.WARNING, "ICMP 등록 실패."));
 				}
 				
 				break;
 			case TCP:
-				status = (Boolean)result;
-				
-				if (status && registerTCPNode(id, ip)) {
-					message = String.format("%s ICMP 등록 성공.", name);
+				if ((Boolean)result && registerTCPNode(id, ip)) {
+					sendEvent(new Event("register", id, Event.NORMAL, "TCP 등록 성공."));
 				}
 				else {
-					message = String.format("%s ICMP 등록 실패.", name);
+					sendEvent(new Event("register", id, Event.WARNING, "TCP 등록 실패."));
 				}
 				
 				break;
 			default:
-				status = result != null;
-				
-				if (status && registerSNMPNode(id, ip, (String)result)) {
-					message = String.format("%s SNMP 등록 성공.", name);
+				if (result != null && registerSNMPNode(id, ip, (String)result)) {
+					sendEvent(new Event("register", id, Event.NORMAL, "SNMP 등록 성공."));
 				}
 				else {
-					message = String.format("%s SNMP 등록 실패.", name);
+					sendEvent(new Event("register", id, Event.NORMAL, "SNMP 등록 실패."));
 				}
 			}
-			
-			sendEvent("register", id, status? 0: 1, name, message);
-		}
-		catch (SQLException sqle) {
+		} catch (SQLException sqle) {
 			sqle.printStackTrace();
 		}
 	}
+	
 	@Override
 	public void onEvent(Object caller, Object ...event) {
 		if (caller instanceof SMTP) {
@@ -1809,36 +1822,29 @@ public class H2Agent implements Commander, Agent, Listener, Listenable {
 	private void onSearchEvent(String ip, String profile) {
 		try (Connection c = this.connPool.getConnection()) {
 			synchronized(this.nextNodeID) {
-				String name = null;
 				long id;
 				
-				try (PreparedStatement pstmt = c.prepareStatement("SELECT id, name FROM node WHERE ip=?;")) {
+				try (PreparedStatement pstmt = c.prepareStatement("SELECT id FROM node WHERE ip=?;")) {
 					pstmt.setString(1, ip);
 					
 					try(ResultSet rs = pstmt.executeQuery()) {
-						if (!rs.next()) {
+						if (rs.next()) {
+							id = rs.getLong(1);
+						} else {
+							id = this.nextNodeID;
+							
 							try (PreparedStatement pstmt2 = c.prepareStatement("INSERT INTO node (id, ip) values (?, ?);")) {
-								pstmt2.setLong(1, this.nextNodeID);
+								pstmt2.setLong(1, id);
 								pstmt2.setString(2, ip);
 								
 								pstmt2.executeUpdate();
 							}
-							
-							id = this.nextNodeID;
-						}
-						else {
-							id = rs.getLong(1);
-							name =  rs.getString(2);
-						}
-						
-						if (name == null) {
-							name = ip;
 						}
 					}
 				}
 				
 				if (registerSNMPNode(id, ip, profile)) {
-					sendEvent("search", id, 0, name, String.format("SNMP 노드 %s 탐지 성공.", name));
+					sendEvent(new Event("search", id, Event.NORMAL, "SNMP 노드  탐지."));
 				}
 				
 				this.nextNodeID++;
@@ -1964,44 +1970,67 @@ public class H2Agent implements Commander, Agent, Listener, Listenable {
 		}
 		
 		return false;
-}
-	private void sendEvent (String origin, long id, int level, String name, String message) throws SQLException {
-		JSONObject event = new JSONObject()
-			.put("origin", origin)
-			.put("id", id)
-			.put("level", level)
-			.put("name", name)
-			.put("message", message);
-		
-		try (Connection c = this.connPool.getConnection()) {
-			synchronized(this.nextEventID) {
-				try (PreparedStatement pstmt = c.prepareStatement("INSERT INTO event (id, timestamp, origin, level, message, name, event_id, date)"+
-					" VALUES(?, ?, ?, ?, ?, ?, ?, ?);")) {
-					Calendar calendar = Calendar.getInstance();
+	}
+	
+	private void sendEvent (Event event) throws SQLException {
+		try(Connection c = this.connPool.getConnection()) {
+			String name;
+			
+			try (PreparedStatement pstmt = c.prepareStatement("SELECT name, ip FROM node WHERE id=?;")) {				
+				pstmt.setLong(1, event.id);
 				
-					pstmt.setLong(1, id);
-					pstmt.setLong(2, calendar.getTimeInMillis());
-					pstmt.setString(3, "snmp");
-					pstmt.setInt(4, level);
-					pstmt.setString(5, message);
-					pstmt.setString(6, name);
-					pstmt.setLong(7, this.nextEventID);
+				try (ResultSet rs = pstmt.executeQuery()) {
+					if (!rs.next()) {
+						return;
+					}
 					
-					calendar.set(Calendar.HOUR_OF_DAY, 0);
-					calendar.set(Calendar.MINUTE, 0);
-					calendar.set(Calendar.SECOND, 0);
-					calendar.set(Calendar.MILLISECOND, 0);
+					name = rs.getString(1);
 					
-					pstmt.setLong(8, calendar.getTimeInMillis());
-					
-					pstmt.executeUpdate();
+					if (name == null) {
+						name = rs.getString(2);
+						
+						if (name == null) {
+							name = "NODE."+ event.id;
+						}
+					}
 				}
-				
-				fireEvent(event
-					.put("eventID", this.nextEventID));
-				
-				this.nextEventID++;
 			}
+						
+			long eventID;
+			
+			synchronized(this.nextEventID) {
+				eventID = this.nextEventID++;
+			}
+				
+			try (PreparedStatement pstmt = c.prepareStatement("INSERT INTO event (id, timestamp, origin, level, message, name, event_id, date)"+
+				" VALUES(?, ?, ?, ?, ?, ?, ?, ?);")) {
+				Calendar calendar = Calendar.getInstance();
+			
+				pstmt.setLong(1, event.id);
+				pstmt.setLong(2, calendar.getTimeInMillis());
+				pstmt.setString(3, "snmp");
+				pstmt.setInt(4, event.level);
+				pstmt.setString(5, event.message);
+				pstmt.setString(6, name);
+				pstmt.setLong(7, eventID);
+				
+				calendar.set(Calendar.HOUR_OF_DAY, 0);
+				calendar.set(Calendar.MINUTE, 0);
+				calendar.set(Calendar.SECOND, 0);
+				calendar.set(Calendar.MILLISECOND, 0);
+				
+				pstmt.setLong(8, calendar.getTimeInMillis());
+				
+				pstmt.executeUpdate();
+			}
+			
+			fireEvent(new JSONObject()
+				.put("origin", event.origin)
+				.put("id", event.id)
+				.put("level", event.level)
+				.put("name", name)
+				.put("message", String.format("%s %s",name, event.message))
+				.put("eventID", eventID));
 		}
 	}
 	
@@ -2043,8 +2072,50 @@ public class H2Agent implements Commander, Agent, Listener, Listenable {
 	}
 
 	@Override
-	public boolean setCritical(long id, JSONObject critical) {
-		// TODO Auto-generated method stub
+	public boolean setCritical(long id, String index, String oid, int limit) {
+		try(Connection c = this.connPool.getConnection()) {
+			c.setAutoCommit(false);
+			
+			try {	
+				try (PreparedStatement pstmt = c.prepareStatement("UPDATE resource"+
+					" SET limit=?"+
+					" WHERE id=? AND _index=? AND oid=?;")) {
+					pstmt.setInt(1, limit);
+					pstmt.setLong(2, id);
+					pstmt.setString(3, oid);
+					pstmt.setString(4, index);
+					
+					pstmt.executeUpdate();
+				}
+				
+				Map<String, Map<String, Value>> indexMap = this.resourceMap.get(id);
+				
+				if (indexMap != null) {
+					Map<String, Value> oidMap = indexMap.get(index);
+					
+					if (oidMap != null) {
+						Value v = oidMap.get(oid);
+						
+						if (v != null) {
+							v.limit = limit;
+							
+							c.commit();
+							
+							return true;
+						}
+					}
+				}
+				
+				throw new SQLException();
+			} catch (SQLException sqle) {
+				c.rollback();
+				
+				throw sqle;
+			}
+		} catch (SQLException sqle) {
+			sqle.printStackTrace();
+		}
+		
 		return false;
 	}
 
@@ -2283,9 +2354,26 @@ public class H2Agent implements Commander, Agent, Listener, Listenable {
 		return false;
 	}
 
-	private void setResource(long id, String oid, String index, String value, long timestamp)  {
+	private void mergeResource(long id, String index, String oid) {
+		Map<String, Map<String, Value>> indexMap = this.resourceMap.get(id);
+		
+		if (indexMap == null) {
+			return;
+		}
+		
+		Map<String, Value> oidMap = indexMap.get(index);
+		
+		if (oidMap == null) {
+			return;
+		}
+		
+		oidMap.remove(oid);
+	}
+	
+	private Value mergeResource(long id, String index, String oid, String value, long timestamp)  {
 		Map<String, Map<String, Value>> indexMap = this.resourceMap.get(id);
 		Map<String, Value> oidMap;
+		Value v;
 		
 		if (indexMap == null) {
 			this.resourceMap.put(id, indexMap = new HashMap<>());
@@ -2300,7 +2388,18 @@ public class H2Agent implements Commander, Agent, Listener, Listenable {
 			}
 		}
 		
-		oidMap.put(oid, new Value(timestamp, value));
+		v = oidMap.get(oid);
+		
+		if (v == null) {
+			v = new Value(timestamp, value);
+			
+			oidMap.put(oid, v);	
+		} else {
+			v.value = value;
+			v.timestamp = timestamp;
+		}
+		
+		return v;
 	}
 	
 	@Override
@@ -2462,8 +2561,33 @@ public class H2Agent implements Commander, Agent, Listener, Listenable {
 	}
 
 	@Override
-	public boolean setSpeed(long id, JSONObject critical) {
-		// TODO Auto-generated method stub
+	public boolean setResource(long id, String index, String oid, String value) {
+		Calendar calendar = Calendar.getInstance();
+		long timestamp = calendar.getTimeInMillis();
+		
+		try {
+			try(Connection c = this.connPool.getConnection()) {
+				try (PreparedStatement pstmt = c.prepareStatement("MERGE INTO resource"+
+					" (id, oid, _index, value, timestamp)"+
+					" KEY(id, oid, _index)"+
+					" VALUES(?, ?, ?, ?, ?);")) {
+					pstmt.setLong(1, id);
+					pstmt.setString(2, oid);
+					pstmt.setString(3, index);
+					pstmt.setString(4, value);
+					pstmt.setLong(5, timestamp);
+					
+					pstmt.executeUpdate();
+				}
+			}
+			
+			mergeResource(id, index, oid, value, timestamp);
+			
+			return true;
+		} catch(SQLException sqle) {
+			sqle.printStackTrace();
+		}
+		
 		return false;
 	}
 
@@ -2532,13 +2656,7 @@ public class H2Agent implements Commander, Agent, Listener, Listenable {
 		
 		return false;
 	}
-
-	@Override
-	public boolean setUpDown(long id, JSONObject updown) {
-		// TODO Auto-generated method stub
-		return false;
-	}
-
+	
 	@Override
 	public void start() throws Exception {
 		try(Connection c = this.connPool.getConnection()) {
@@ -2795,6 +2913,30 @@ public class H2Agent implements Commander, Agent, Listener, Listenable {
 		return false;
 	}
 
+	@Override
+	public boolean removeResource(long id, String index, String oid) {
+		try {
+			try(Connection c = this.connPool.getConnection()) {
+				try (PreparedStatement pstmt = c.prepareStatement("DELETE FROM resource WHERE"+
+					" id=? AND _index=? AND oid=?;")) {
+					pstmt.setLong(1, id);
+					pstmt.setString(2, index);
+					pstmt.setString(3, oid);
+					
+					pstmt.executeUpdate();
+				}
+			}
+			
+			mergeResource(id, index, oid);
+			
+			return true;
+		} catch(SQLException sqle) {
+			sqle.printStackTrace();
+		}
+		
+		return false;
+	}
+	
 	@Override
 	public boolean removeUser(String name) {
 		try (Connection c = this.connPool.getConnection()) {

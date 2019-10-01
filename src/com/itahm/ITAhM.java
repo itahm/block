@@ -362,10 +362,6 @@ public class ITAhM extends HTTPServer implements Listener {
 				set(request, response);
 				
 				break;
-			case "QUERY":
-				this.agent.getDataByID(request.getLong("id"));
-				
-				break;
 			default:
 				response.write(new JSONObject().
 					put("error", "Command not found.").toString());
@@ -501,7 +497,12 @@ public class ITAhM extends HTTPServer implements Listener {
 			}
 			break;
 		case "CRITICAL":
-			success = this.agent.setCritical(request.getLong("id"), request.getJSONObject("critical"));
+			if (!this.agent.setCritical(request.getLong("id"),
+				request.getString("index"),
+				request.getString("oid"),
+				request.getInt("critical"))) {
+				response.setStatus(Response.Status.CONFLICT);
+			}
 			
 			break;
 		case "ICON":
@@ -544,12 +545,21 @@ public class ITAhM extends HTTPServer implements Listener {
 			}
 			
 			break;
-		case "SPEED":
-			success = this.agent.setSpeed(request.getLong("id"), request.getJSONObject("speed"));
-			
-			break;
-		case "UPDOWN":
-			success = this.agent.setCritical(request.getLong("id"), request.getJSONObject("updown"));
+		case "RESOURCE":
+			if (request.has("value")) {
+				if (!this.agent.setResource(request.getLong("id"),
+					request.getString("index"),
+					request.getString("oid"),
+					request.getString("value"))) {
+					response.setStatus(Response.Status.CONFLICT);
+				}
+			} else {
+				if (!this.agent.removeResource(request.getLong("id"),
+					request.getString("index"),
+					request.getString("oid"))) {
+					response.setStatus(Response.Status.CONFLICT);
+				}
+			}
 			
 			break;
 		case "USER":

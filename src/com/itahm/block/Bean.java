@@ -4,12 +4,20 @@ import com.itahm.json.JSONObject;
 
 public class Bean {
 	public static class Value {
-		public final long timestamp;
-		public final String value;
+		public long timestamp;
+		public String value;
+		public int limit;
+		public boolean critical;
 		
 		public Value (long timestamp, String value) {
+			this(timestamp, value, 0, false);
+		}
+		
+		public Value (long timestamp, String value, int limit, boolean critical) {
 			this.timestamp = timestamp;
 			this.value = value;
+			this.limit = limit;
+			this.critical = critical;
 		}
 	}
 	
@@ -46,6 +54,39 @@ public class Bean {
 			this.onChange = onChange;
 		}
 	}
+	
+	public static class CriticalEvent extends Event {
+		public final String index;
+		public final String oid;
+		public final boolean critical;
+		
+		public CriticalEvent(long id, String index, String oid, boolean critical, String title) {
+			super("critical", id, critical? Event.ERROR: Event.NORMAL, String.format("%s 임계 %s", title, critical? "초과": "정상"));
+			
+			this.index = index;
+			this.oid = oid;
+			this.critical = critical;
+		}
+	}
+	
+	public static class Event {
+		public static final int NORMAL = 0;
+		public static final int WARNING = 1;
+		public static final int ERROR = 2;
+		
+		public final String origin;
+		public final long id;
+		public final int level;
+		public String message;
+		
+		public Event(String origin, long id, int level, String message) {
+			this.origin = origin;
+			this.id = id;
+			this.level = level;
+			this.message = message;
+		}
+	}
+	
 	
 	public static class Config {
 		public long requestInterval = 10000L;

@@ -2,6 +2,7 @@ package com.itahm.block.parser;
 
 import java.util.Map;
 
+import com.itahm.block.Bean.CriticalEvent;
 import com.itahm.block.Bean.Max;
 import com.itahm.block.Bean.Value;
 
@@ -20,7 +21,7 @@ public class IFOutOctets implements Parseable {
 	private final Map<Long, Max> maxRate = new HashMap<>();
 	
 	@Override
-	public void parse(long id, String idx, Map<String, Value> oidMap) {
+	public CriticalEvent parse(long id, String idx, Map<String, Value> oidMap) {
 		long speed = 0;
 		int index = Integer.valueOf(idx);
 		Value v;
@@ -30,30 +31,23 @@ public class IFOutOctets implements Parseable {
 			this.tmpMap.put(id, tmpIndexMap = new HashMap<Integer, Value>());
 		}
 		
-		v = oidMap.get("1.3.6.1.2.1.31.1.1.1.15");
-		
-		if (v != null) {
-			speed = Long.valueOf(v.value) * 1000000;
-		} else {
-			v = oidMap.get("1.3.6.1.2.1.2.2.1.5");
-			
-			if (v != null) {
-				speed = Long.valueOf(v.value);
-			}
+		if ((v = oidMap.get("1.3.6.1.4.1.49447.3.5")) != null) {
+			speed = Long.valueOf(v.value);
+		} else if ((v = oidMap.get("1.3.6.1.2.1.2.2.1.5")) != null) {
+			speed = Long.valueOf(v.value);
 		}
 		
 		if (speed > 0) {
-			v = oidMap.get("1.3.6.1.2.1.31.1.1.1.10");
-			
-			if (v == null) {
-				v = oidMap.get("1.3.6.1.2.1.2.2.1.16");
-			}
+			v = oidMap.get("1.3.6.1.2.1.2.2.1.16");
 			
 			if (v != null) {
 				Long l = parseBPS(id, tmpIndexMap.get(index), speed, Long.valueOf(v.value), v.timestamp);
 				
+				tmpIndexMap.put(index, new Value(v.timestamp, v.value));
+				
 				if (l != null) {
 					Max max = this.max.get(id);
+					Value bps = oidMap.get("1.3.6.1.4.1.49447.3.2");
 					
 					if (max == null || Long.valueOf(max.value) < l) {
 						this.max.put(id, new Max(id, index, Long.toString(l), l *100 / speed));
@@ -65,20 +59,37 @@ public class IFOutOctets implements Parseable {
 						this.maxRate.put(id, new Max(id, index, Long.toString(l), l *100 / speed));
 					}
 					
-					oidMap.put("1.3.6.1.4.1.49447.3.2", new Value(v.timestamp, Long.toString(l)));
+					if (bps == null) {
+						bps = new Value(v.timestamp, Long.toString(l));
+						
+						oidMap.put("1.3.6.1.4.1.49447.3.2", bps);
+					} else {						
+						bps.timestamp = v.timestamp;
+						bps.value = Long.toString(l);
+						
+						if (bps.limit > 0) {
+							boolean critical = l > bps.limit;
+						
+							if (bps.critical != critical) {
+								bps.critical = critical;
+								
+								return new CriticalEvent(id, "0", "1.3.6.1.4.1.49447.3.2", critical, "송신");
+							}
+						}
+					}
 				}
-				
-				tmpIndexMap.put(index, v);
 			}
 		}
+		
+		return null;
 	}
 	
-	private Long parseBPS(long id, Value v, long speed, long octets, long timestamp) {
-		if (v != null) {
-			long diff = timestamp - v.timestamp;
+	private Long parseBPS(long id, Value old, long speed, long octets, long timestamp) {
+		if (old != null) {
+			long diff = timestamp - old.timestamp;
 			
 			if (diff > 0) {
-				return (octets - Long.valueOf(v.value)) *8000 / diff;
+				return (octets - Long.valueOf(old.value)) *8000 / diff;
 			}
 		}
 		
@@ -188,11 +199,6 @@ public class IFOutOctets implements Parseable {
 	public void reset(long id) {
 		this.publicMax.remove(id);
 		this.publicMaxRate.remove(id);
-	}
-
-	@Override
-	public String getOID(String oid) {
-		return null;
 	}
 
 }

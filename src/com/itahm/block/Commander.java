@@ -17,7 +17,6 @@ public interface Commander {
 	public JSONObject getAccount(String username);
 	public JSONObject getAccount();
 	public JSONObject getConfig();
-	public void getDataByID(long id); // TODO resource, index, summary, start, end
 	public JSONObject getEvent(long eventID);
 	public JSONObject getEventByDate(long date);
 	public JSONObject getIcon();
@@ -40,7 +39,7 @@ public interface Commander {
 	public JSONObject getUser();
 	public JSONObject getUser(String name);
 	public boolean setAccount(String username, JSONObject account);
-	public boolean setCritical(long id, JSONObject critical);
+	public boolean setCritical(long id, String index, String oid, int critical);
 	public boolean setIcon(String id, JSONObject icon);
 	public boolean setLink(long nodeFrom, long nodeTo, JSONObject link);
 	public boolean setMonitor(long id, String ip, String protocol);
@@ -52,11 +51,10 @@ public interface Commander {
 	public boolean setSaveInterval(int interval);
 	public boolean setSetting(String key, String value);
 	public SMTP setSMTPServer(JSONObject smtp);
-	public boolean setSpeed(long id, JSONObject critical);
+	public boolean setResource(long id, String index, String oid, String value);
 	public boolean setStoreDate(int period);
 	public boolean setTimeout(int timeout);
 	public boolean setUser(String id, JSONObject user);
-	public boolean setUpDown(long id, JSONObject updown);
 	public void start() throws Exception;
 	public boolean removeAccount(String username);
 	public void removeEventListener(Listener listener);
@@ -65,6 +63,7 @@ public interface Commander {
 	public boolean removeNode(long id);
 	public boolean removePath(long nodeFrom, long nodeTo);
 	public boolean removeProfile(String name);
+	public boolean removeResource(long id, String index, String oid);
 	public boolean removeUser(String name);
 	public boolean search(String network, int mask);
 }
