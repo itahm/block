@@ -38,7 +38,7 @@ public class ResponseTime extends AbstractParser {
 				if (v.critical != critical) {
 					v.critical = critical;
 					
-					return new CriticalEvent(id, "0", "1.3.6.1.4.1.49447.1", critical, "응답 시간");
+					return new CriticalEvent(id, "0", "1.3.6.1.4.1.49447.1", critical, String.format("응답 시간 %dms", rtt));
 				}
 			}
 		}

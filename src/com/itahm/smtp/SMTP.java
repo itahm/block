@@ -1,4 +1,4 @@
-package com.itahm.block;
+package com.itahm.smtp;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -20,7 +20,7 @@ import com.itahm.util.Listener;
 
 public class SMTP extends Authenticator implements Runnable, Closeable {
 
-	enum Protocol {
+	public enum Protocol {
 		TLS, SSL
 	}
 	
@@ -28,6 +28,7 @@ public class SMTP extends Authenticator implements Runnable, Closeable {
 	private final ArrayList<Listener> listenerList = new ArrayList<>();
 	private final Properties props = System.getProperties();
 	private final BlockingQueue<MimeMessage> queue = new LinkedBlockingQueue<>();
+	private Boolean isClosed = false;
 	private final String user;
 	private final String password;
 	private final Protocol protocol;
@@ -102,18 +103,32 @@ public class SMTP extends Authenticator implements Runnable, Closeable {
 	
 	@Override
 	public void close() throws IOException {
-		this.thread.interrupt();
+		synchronized(this.isClosed) {
+			this.isClosed = true;
+			
+			this.queue.offer(new MimeMessage(Session.getInstance(this.props)));
+		}
 	}
 
 	@Override
 	public void run() {
+		MimeMessage mm;
+		
 		while (!this.thread.isInterrupted()) {
 			try {
 				try {
-					Transport.send(this.queue.take());
+					mm = this.queue.take();
+					
+					synchronized(this.isClosed) {
+						if (this.isClosed) {
+							break;
+						}
+					}
+					
+					Transport.send(mm);
 				} catch (MessagingException me) {
 					for (Listener l :this.listenerList) {
-						l.onEvent(me, this);
+						l.onEvent(this, me);
 					}
 				}
 			} catch (InterruptedException ie) {

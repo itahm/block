@@ -40,7 +40,7 @@ public class HRProcessorLoad extends AbstractParser {
 				if (critical != v.critical) {
 					v.critical = critical;
 					
-					return new CriticalEvent(id, "0", "1.3.6.1.2.1.25.3.3.1.2", critical, "프로세서 로드");
+					return new CriticalEvent(id, "0", "1.3.6.1.2.1.25.3.3.1.2", critical, String.format("프로세서 로드 %d%%", load));
 				}
 			}
 		}

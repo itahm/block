@@ -58,7 +58,7 @@ abstract public class HRStorage implements Parseable {
 								if (critical != v.critical) {
 									v.critical = critical;
 									
-									return new CriticalEvent(id, idx, "1.3.6.1.2.1.25.2.3.1.6", critical, getEventTitle());
+									return new CriticalEvent(id, idx, "1.3.6.1.2.1.25.2.3.1.6", critical, String.format("%s %d%%", getEventTitle(), used *100 / size));
 								}
 							}
 						}

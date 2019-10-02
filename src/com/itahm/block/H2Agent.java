@@ -47,6 +47,7 @@ import com.itahm.block.parser.IFOutOctets;
 import com.itahm.block.parser.ResponseTime;
 import com.itahm.json.JSONArray;
 import com.itahm.json.JSONObject;
+import com.itahm.smtp.SMTP;
 import com.itahm.util.Listenable;
 import com.itahm.util.Listener;
 import com.itahm.util.Network;
@@ -1758,12 +1759,8 @@ public class H2Agent implements Commander, Agent, Listener, Listenable {
 		rule = ruleMap.get(oid);
 		
 		switch (rule.syntax) {
-			case "sysName":
-				value = Util.toValidString(((OctetString)variable).getValue());
-				
-				break;
 			case "DisplayString":
-				value = new String(((OctetString)variable).getValue());
+				value = Util.toValidString(((OctetString)variable).getValue());
 				
 				break;
 			case "TimeTicks":
@@ -2531,46 +2528,13 @@ public class H2Agent implements Commander, Agent, Listener, Listenable {
 	}
 
 	@Override
-	public SMTP setSMTPServer(JSONObject smtp) {
-		if (smtp.has("disabled") && smtp.getBoolean("disabled")) {
-			try (Connection c = this.connPool.getConnection()) {
+	public boolean setSMTP(JSONObject smtp) {
+		try (Connection c = this.connPool.getConnection()) {
+			if (smtp.has("disabled") && smtp.getBoolean("disabled")) {
 				try (Statement stmt = c.createStatement()){
-					stmt.executeUpdate("UPDATE config SET value='true' where key='smtpDisabled';");
-			
-					//TODO SMTP 서버 동작 중지
-					
-					return null;
+					stmt.executeUpdate("UPDATE config SET value='true' where key='smtpDisabled';");						
 				}
-			} catch (SQLException sqle) {					
-				sqle.printStackTrace();
-			}
-		}
-		else {
-			SMTP smtpServer;
-			String
-				server = smtp.getString("server"),
-				user = smtp.getString("user"),
-				password = smtp.getString("password"),
-				protocol = smtp.getString("protocol");
-			
-			switch(protocol.toUpperCase()) {
-			case "SMTP":
-				smtpServer = new SMTP(server, user);
-				
-				break;
-			case "TLS":
-				smtpServer = new SMTP(server, user, password, SMTP.Protocol.TLS);
-				
-				break;
-			case "SSL":
-				smtpServer = new SMTP(server, user, password, SMTP.Protocol.SSL);
-				
-				break;
-			default:
-				return null;
-			}
-			
-			try (Connection c = this.connPool.getConnection()) {
+			} else {
 				try (PreparedStatement pstmt = c.prepareStatement("MERGE INTO config (key, value)"+
 					" VALUES('smtpServer', ?)"+
 					" ,('smtpProtocol', ?)"+
@@ -2578,21 +2542,21 @@ public class H2Agent implements Commander, Agent, Listener, Listenable {
 					" ,('smtpPassword', ?)"+
 					" ,('smtpdisabled', 'false');")) {
 					
-					pstmt.setString(1, server);
-					pstmt.setString(2, protocol);
-					pstmt.setString(3, user);
-					pstmt.setString(4, password);
+					pstmt.setString(1, smtp.getString("server"));
+					pstmt.setString(2, smtp.getString("user"));
+					pstmt.setString(3, smtp.getString("password"));
+					pstmt.setString(4, smtp.getString("protocol"));
 					
 					pstmt.executeUpdate();
-					
-					return smtpServer;
 				}
-			} catch (SQLException sqle) {
-				sqle.printStackTrace();
 			}
+			
+			return true;
+		} catch (SQLException sqle) {					
+			sqle.printStackTrace();
 		}
 		
-		return null;
+		return false;
 	}
 
 	@Override

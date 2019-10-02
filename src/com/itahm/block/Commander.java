@@ -51,7 +51,7 @@ public interface Commander {
 	public boolean setRequestInterval(long interval);
 	public boolean setSaveInterval(int interval);
 	public boolean setSetting(String key, String value);
-	public SMTP setSMTPServer(JSONObject smtp);
+	public boolean setSMTP(JSONObject smtp);
 	public boolean setResource(long id, String index, String oid, String value);
 	public boolean setStoreDate(int period);
 	public boolean setTimeout(int timeout);

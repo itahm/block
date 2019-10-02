@@ -48,7 +48,7 @@ abstract public class IFErrors extends AbstractParser {
 					if (v.critical != critical) {
 						v.critical = critical;
 						
-						return new CriticalEvent(id, idx, getErrorsOID(), critical, getEventTitle());
+						return new CriticalEvent(id, idx, getErrorsOID(), critical, String.format("%s %dcps", getEventTitle(), cps));
 					}
 				}
 			}

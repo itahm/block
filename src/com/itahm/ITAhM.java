@@ -6,6 +6,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
+import java.sql.SQLException;
 import java.util.regex.Pattern;
 
 import com.itahm.http.Connection;
@@ -21,7 +22,7 @@ import com.itahm.util.Listener;
 import com.itahm.util.Util;
 import com.itahm.block.Commander;
 import com.itahm.block.H2Agent;
-import com.itahm.block.SMTP;
+import com.itahm.smtp.SMTP;
 
 public class ITAhM extends HTTPServer implements Listener {
 	private enum Status {
@@ -334,7 +335,7 @@ public class ITAhM extends HTTPServer implements Listener {
 				this.event = event.toString().getBytes(StandardCharsets.UTF_8.name());
 				
 				notifyAll();
-			} catch (UnsupportedEncodingException uee) {}			
+			} catch (UnsupportedEncodingException uee) {}
 		}
 	}
 	
@@ -441,8 +442,6 @@ public class ITAhM extends HTTPServer implements Listener {
 	}
 	
 	private void set(JSONObject request, Response response) {
-		boolean success = true;
-		
 		switch(request.getString("target").toUpperCase()) {
 		case "ACCOUNT":
 			if (!this.agent.setAccount(request.getString("username"), request.getJSONObject("account"))) {
@@ -459,11 +458,15 @@ public class ITAhM extends HTTPServer implements Listener {
 				
 				break;
 			case "storeDate":
-				success = this.agent.setStoreDate(Integer.valueOf(request.getString("value")));
+				if (!this.agent.setStoreDate(Integer.valueOf(request.getString("value")))) {
+					response.setStatus(Response.Status.SERVERERROR);
+				}
 				
 				break;
 			case "saveInterval": 
-				success = this.agent.setSaveInterval(Integer.valueOf(request.getString("value")));
+				if (!this.agent.setSaveInterval(Integer.valueOf(request.getString("value")))) {
+					response.setStatus(Response.Status.SERVERERROR);
+				}
 				
 				break;
 			case "requestInterval": 
@@ -481,9 +484,26 @@ public class ITAhM extends HTTPServer implements Listener {
 					}
 				}
 				
-				this.smtp = this.agent.setSMTPServer(request.get("value").equals(JSONObject.NULL)? null: new JSONObject(request.getJSONObject("value")));
-				
-				success = true;
+				if (this.agent.setSMTP(request.getJSONObject("value"))) {
+					JSONObject smtp = request.getJSONObject("value");
+					
+					switch(smtp.getString("protocol").toUpperCase()) {
+					case "SMTP":
+						this.smtp = new SMTP(smtp.getString("server"), smtp.getString("user"));
+						
+						break;
+					case "TLS":
+						this.smtp = new SMTP(smtp.getString("server"), smtp.getString("user"), smtp.getString("password"), SMTP.Protocol.TLS);
+						
+						break;
+					case "SSL":
+						this.smtp = new SMTP(smtp.getString("server"), smtp.getString("user"), smtp.getString("password"), SMTP.Protocol.SSL);
+						
+						break;
+					default:
+						response.setStatus(Response.Status.BADREQUEST);
+					}
+				}
 				
 				break;
 			case "timeout": 
@@ -493,8 +513,9 @@ public class ITAhM extends HTTPServer implements Listener {
 			
 				break;
 			default:
-				success = false;
+				response.setStatus(Response.Status.BADREQUEST);
 			}
+			
 			break;
 		case "CRITICAL":
 			if (!this.agent.setCritical(request.getLong("id"),
@@ -536,12 +557,14 @@ public class ITAhM extends HTTPServer implements Listener {
 			
 			break;
 		case "POSITION":
-			success = this.agent.setPosition(request.getString("name"), request.getJSONObject("position"));
+			if (!this.agent.setPosition(request.getString("name"), request.getJSONObject("position"))) {
+				response.setStatus(Response.Status.SERVERERROR);
+			}
 			
 			break;
 		case "SETTING":
 			if (!this.agent.setSetting(request.getString("key"), request.has("value")? request.getString("value"): null)) {
-				response.setStatus(Response.Status.CONFLICT);
+				response.setStatus(Response.Status.SERVERERROR);
 			}
 			
 			break;
@@ -563,16 +586,14 @@ public class ITAhM extends HTTPServer implements Listener {
 			
 			break;
 		case "USER":
-			success = this.agent.setUser(request.getString("name"), request.getJSONObject("user"));
+			if (!this.agent.setUser(request.getString("name"), request.getJSONObject("user"))) {
+				response.setStatus(Response.Status.SERVERERROR);
+			}
 			
 			break;
 		default:
 			
 			throw new JSONException("Target is not found.");
-		}
-		
-		if (!success) {
-			
 		}
 	}
 	
