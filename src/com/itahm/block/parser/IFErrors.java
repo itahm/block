@@ -23,34 +23,32 @@ abstract public class IFErrors extends AbstractParser {
 			}
 			
 			int index = Integer.valueOf(idx);
-			Long l = parse(id, oldIndexMap.get(index), Long.valueOf(v.value), v.timestamp);
+			Long cps = parse(id, oldIndexMap.get(index), Long.valueOf(v.value), v.timestamp);
 			
 			oldIndexMap.put(index, new Value(v.timestamp, v.value));
 			
-			if (l != null) {
+			if (cps != null) {
 				Max max = this.max.get(id);
-				Value cps = oidMap.get(getCPSOID());
+				Value cpsValue = oidMap.get(getCPSOID());
 				
-				if (max == null || Long.valueOf(max.value) < l) {
-					this.max.put(id, new Max(id, index, Long.toString(l)));
+				if (max == null || Long.valueOf(max.value) < cps) {
+					this.max.put(id, new Max(id, index, Long.toString(cps)));
 				}
 				
-				if (cps == null) {
-					cps = new Value(v.timestamp, Long.toString(l));
-					
-					oidMap.put(getCPSOID(), cps);
+				if (cpsValue == null) {
+					oidMap.put(getCPSOID(), new Value(v.timestamp, Long.toString(cps)));
 				} else {					
-					cps.timestamp = v.timestamp;
-					cps.value = Long.toString(l);
-					
-					if (cps.limit > 0) {
-						boolean critical = l > cps.limit;
-					
-						if (cps.critical != critical) {
-							cps.critical = critical;
-							
-							return new CriticalEvent(id, idx, getCPSOID(), critical, getEventTitle());
-						}
+					cpsValue.timestamp = v.timestamp;
+					cpsValue.value = Long.toString(cps);
+				}
+				
+				if (v.limit > 0) {
+					boolean critical = cps > v.limit;
+				
+					if (v.critical != critical) {
+						v.critical = critical;
+						
+						return new CriticalEvent(id, idx, getErrorsOID(), critical, getEventTitle());
 					}
 				}
 			}

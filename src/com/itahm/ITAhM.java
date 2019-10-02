@@ -500,7 +500,7 @@ public class ITAhM extends HTTPServer implements Listener {
 			if (!this.agent.setCritical(request.getLong("id"),
 				request.getString("index"),
 				request.getString("oid"),
-				request.getInt("critical"))) {
+				request.getInt("limit"))) {
 				response.setStatus(Response.Status.CONFLICT);
 			}
 			
@@ -662,6 +662,8 @@ public class ITAhM extends HTTPServer implements Listener {
 				this.agent.getAccount();
 		case "CONFIG":
 			return this.agent.getConfig();
+		case "CRITICAL":
+			return this.agent.getCritical(request.getLong("id"), request.getString("index"), request.getString("oid"));
 		case "EVENT":
 			return this.agent.getEventByDate(request.getLong("date"));
 		case "ICON":

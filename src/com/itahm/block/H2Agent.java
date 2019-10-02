@@ -760,6 +760,25 @@ public class H2Agent implements Commander, Agent, Listener, Listenable {
 	}
 
 	@Override
+	public JSONObject getCritical(long id, String index, String oid) {
+		Map<String, Map<String, Value>> indexMap = this.resourceMap.get(id);
+		
+		if (indexMap != null) {			
+			Map<String, Value> oidMap = indexMap.get(index);
+			
+			if (oidMap != null) {
+				Value v = oidMap.get(oid);
+				
+				if (v != null) {
+					return new JSONObject().put("limit", v.limit);
+				}
+			}
+		}
+		
+		return null;
+	}
+	
+	@Override
 	public JSONObject getEvent(long eventID) {
 		try (Connection c =  this.connPool.getConnection()) {
 			try (PreparedStatement pstmt = c.prepareStatement("SELECT id, timestamp, origin, level, message, name FROM event WHERE event_id=?;")) {
@@ -1087,7 +1106,9 @@ public class H2Agent implements Commander, Agent, Listener, Listenable {
 		
 		try (Connection c = this.connPool.getConnection()) {
 			try (PreparedStatement pstmt = c.prepareStatement("SELECT n.id, name, type, n.ip, label, m.protocol, m.status"+
-				" FROM node AS n LEFT JOIN monitor AS m ON n.id = m.id WHERE n.id=?;")) {
+				" FROM node AS n"+
+				" LEFT JOIN monitor AS m ON n.id = m.id"+
+				" WHERE n.id=?;")) {
 				pstmt.setLong(1, id);
 				
 				try (ResultSet rs = pstmt.executeQuery()) {
@@ -1129,7 +1150,8 @@ public class H2Agent implements Commander, Agent, Listener, Listenable {
 				if (indexMap != null) {
 					JSONObject
 						snmpData = new JSONObject(),
-						indexData;
+						criticalData = new JSONObject(),
+						snmpIndexData, criticalIndexData;
 					
 					
 					Map<String, Value> oidMap;
@@ -1138,20 +1160,31 @@ public class H2Agent implements Commander, Agent, Listener, Listenable {
 					for (String index : indexMap.keySet()) {
 						oidMap = indexMap.get(index);
 						
-						snmpData.put(index, indexData = new JSONObject());
+						snmpData.put(index, snmpIndexData = new JSONObject());
+						
+						criticalIndexData = new JSONObject();
 						
 						for (String oid: oidMap.keySet()) {
 							v = oidMap.get(oid);
 							
-							indexData.put(oid, v.value);
+							snmpIndexData.put(oid, v.value);
 							
 							if (oid.equals("1.3.6.1.4.1.49447.1")) {
-								indexData.put("1.3.6.1.4.1.49447.2", v.timestamp);
+								snmpIndexData.put("1.3.6.1.4.1.49447.2", v.timestamp);
 							}
+							
+							if (v.critical) {
+								criticalIndexData.put(oid, true);
+							}
+						}
+						
+						if (criticalIndexData.keySet().size() > 0) {
+							criticalData.put(index, criticalIndexData);
 						}
 					}
 					
 					node.put("resource", snmpData);
+					node.put("critical", criticalData);
 				}
 			}
 			
@@ -1365,10 +1398,14 @@ public class H2Agent implements Commander, Agent, Listener, Listenable {
 	public synchronized JSONObject getResource(long id, int index, String oid, long date, boolean summary) {
 		Calendar calendar = Calendar.getInstance();
 		JSONObject result = new JSONObject();
+		int year = calendar.get(Calendar.YEAR);
+		int day = calendar.get(Calendar.DAY_OF_YEAR);
 		
 		calendar.setTimeInMillis(date);
 		
-		try (Connection c = DriverManager.getConnection(
+		try (Connection c = year == calendar.get(Calendar.YEAR) && day == calendar.get(Calendar.DAY_OF_YEAR)?
+			this.batch.getCurrentConnection():
+			DriverManager.getConnection(
 			String.format("jdbc:h2:%s\\%04d-%02d-%02d;ACCESS_MODE_DATA=r;IFEXISTS=TRUE;",
 				this.root.toString(),
 				calendar.get(Calendar.YEAR),
@@ -1391,8 +1428,6 @@ public class H2Agent implements Commander, Agent, Listener, Listenable {
 			}
 		} catch (SQLException sqle) {
 		}
-		
-		calendar.add(Calendar.DATE, 1);
 		
 		return result;
 	}
@@ -2078,12 +2113,12 @@ public class H2Agent implements Commander, Agent, Listener, Listenable {
 			
 			try {	
 				try (PreparedStatement pstmt = c.prepareStatement("UPDATE resource"+
-					" SET limit=?"+
+					" SET _limit=?"+
 					" WHERE id=? AND _index=? AND oid=?;")) {
 					pstmt.setInt(1, limit);
 					pstmt.setLong(2, id);
-					pstmt.setString(3, oid);
-					pstmt.setString(4, index);
+					pstmt.setString(3, index);
+					pstmt.setString(4, oid);
 					
 					pstmt.executeUpdate();
 				}

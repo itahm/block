@@ -17,6 +17,7 @@ public interface Commander {
 	public JSONObject getAccount(String username);
 	public JSONObject getAccount();
 	public JSONObject getConfig();
+	public JSONObject getCritical(long id, String index, String oid);
 	public JSONObject getEvent(long eventID);
 	public JSONObject getEventByDate(long date);
 	public JSONObject getIcon();

@@ -111,6 +111,10 @@ public class Batch extends Timer {
 			this.path.resolve(Util.toDateString(calendar.getTime())).toString()), "sa", "");
 	}
 	
+	public Connection getCurrentConnection() throws SQLException {
+		return this.connPool.getConnection();
+	}
+	
 	public void schedule(long period) {
 		if (this.saver != null) {
 			this.saver.cancel();

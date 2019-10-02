@@ -40,41 +40,38 @@ public class IFInOctets implements Parseable {
 			v = oidMap.get("1.3.6.1.2.1.2.2.1.10");
 			
 			if (v != null) {
-				Long l = parseBPS(id, oldIndexMap.get(index), speed, Long.valueOf(v.value), v.timestamp);
-			
-				//oldIndexMap.put(index, v);
+				Long bps = parseBPS(id, oldIndexMap.get(index), speed, Long.valueOf(v.value), v.timestamp);
+				
 				oldIndexMap.put(index, new Value(v.timestamp, v.value));
 				
-				if (l != null) {
+				if (bps != null) {
 					Max max = this.max.get(id);
-					Value bps = oidMap.get("1.3.6.1.4.1.49447.3.1");
+					Value bpsValue = oidMap.get("1.3.6.1.4.1.49447.3.1");
 					
-					if (max == null || Long.valueOf(max.value) < l) {
-						this.max.put(id, new Max(id, index, Long.toString(l), l *100 / speed));
+					if (max == null || Long.valueOf(max.value) < bps) {
+						this.max.put(id, new Max(id, index, Long.toString(bps), bps *100 / speed));
 					}
 					
 					max = this.maxRate.get(id);
 					
-					if (max == null || max.rate < l *100 / speed) {
-						this.maxRate.put(id, new Max(id, index, Long.toString(l), l *100 / speed));
+					if (max == null || max.rate < bps *100 / speed) {
+						this.maxRate.put(id, new Max(id, index, Long.toString(bps), bps *100 / speed));
 					}
 					
-					if (bps == null) {
-						bps = new Value(v.timestamp, Long.toString(l));
-						
-						oidMap.put("1.3.6.1.4.1.49447.3.1", bps);
+					if (bpsValue == null) {
+						oidMap.put("1.3.6.1.4.1.49447.3.1", new Value(v.timestamp, Long.toString(bps)));
 					} else {						
-						bps.timestamp = v.timestamp;
-						bps.value = Long.toString(l);
-						
-						if (bps.limit > 0) {
-							boolean critical = l > bps.limit;
-						
-							if (bps.critical != critical) {
-								bps.critical = critical;
-								
-								return new CriticalEvent(id, "0", "1.3.6.1.4.1.49447.3.1", critical, "수신");
-							}
+						bpsValue.timestamp = v.timestamp;
+						bpsValue.value = Long.toString(bps);
+					}
+					
+					if (v.limit > 0) {
+						boolean critical = bps *100 / speed > v.limit;
+					
+						if (v.critical != critical) {
+							v.critical = critical;
+							
+							return new CriticalEvent(id, idx, "1.3.6.1.2.1.2.2.1.10", critical, "수신");
 						}
 					}
 				}

@@ -37,7 +37,7 @@ public class HRProcessorLoad extends AbstractParser {
 			if (v.limit > 0) {
 				boolean critical = load > v.limit;
 				
-				if (critical != v.critical) {System.out.println(v.limit);
+				if (critical != v.critical) {
 					v.critical = critical;
 					
 					return new CriticalEvent(id, "0", "1.3.6.1.2.1.25.3.3.1.2", critical, "프로세서 로드");

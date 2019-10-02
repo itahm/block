@@ -92,7 +92,7 @@ public class Bean {
 		public long requestInterval = 10000L;
 		public int timeout = 5000;
 		public int retry = 2;
-		public long saveInterval = 60000L;
+		public long saveInterval = 60000L *5;
 		public long storeDate = 0L;
 		
 		public JSONObject getJSONObject() {
