@@ -31,36 +31,33 @@ public class SMTP extends Authenticator implements Runnable, Closeable {
 	private Boolean isClosed = false;
 	private final String user;
 	private final String password;
-	private final Protocol protocol;
+	private final boolean auth;
 	
-	public SMTP(String server, String user) {
-		this(server, user, null, null);
-	}
-	
-	public SMTP(String server, final String user, final String password, Protocol protocol) {
+	public SMTP(String server, String protocol, final String user, final String password) {
 		this.user = user;
 		this.password = password;
-		this.protocol = protocol;
 		
 		props.put("mail.smtp.host", server);
 		//props.put("mail.smtp.timeout", TIMEOUT);
-		
-		if (protocol != null) {
-			props.put("mail.smtp.auth", "true");
-			
-			switch (protocol) {
-			case SSL:
+		switch (protocol.toUpperCase()) {
+			case "SSL":
 				props.put("mail.smtp.port", "465");
 				props.put("mail.smtp.socketFactory.port", "465");
 				props.put("mail.smtp.socketFactory.class", "javax.net.ssl.SSLSocketFactory");
+				props.put("mail.smtp.auth", "true");
+				this.auth = true;
 				
 				break;
-			case TLS:
+			case "TLS":
 				props.put("mail.smtp.port", "587");
 				props.put("mail.smtp.starttls.enable", "true");
+				props.put("mail.smtp.auth", "true");
+				
+				this.auth = true;
 				
 				break;
-			}
+			default:
+				this.auth = false;
 		}
 		
 		thread.setDaemon(true);
@@ -75,9 +72,8 @@ public class SMTP extends Authenticator implements Runnable, Closeable {
 		this.listenerList.remove(listener);
 	}
 	
-	//public void send(String title, String body, String... to) throws MessagingException {
 	public void send(String title, String... to) throws MessagingException {
-		MimeMessage mm = new MimeMessage(Session.getInstance(this.props, this.protocol == null? null: this));
+		MimeMessage mm = new MimeMessage(Session.getInstance(this.props, this.auth? this: null));
 		
 		mm.addHeader("Content-type", "text/HTML; charset=UTF-8");
 		mm.addHeader("format", "flowed");
@@ -87,7 +83,7 @@ public class SMTP extends Authenticator implements Runnable, Closeable {
 		
 		mm.setSubject(title, "UTF-8");
 		mm.setFrom(new InternetAddress(this.user));
-		//mm.setText(body, "UTF-8");
+		mm.setText("", "UTF-8");
 		
 		for (String s : to) {
 			mm.addRecipient(MimeMessage.RecipientType.TO, new InternetAddress(s, false));

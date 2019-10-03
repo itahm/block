@@ -71,8 +71,14 @@ public class IFOutOctets implements Parseable {
 						if (v.critical != critical) {
 							v.critical = critical;
 							
-							return new CriticalEvent(id, idx, "1.3.6.1.2.1.2.2.1.16", critical, String.format("송신 %d%%", bps *100 / speed));
+							return new CriticalEvent(id, idx, "1.3.6.1.2.1.2.2.1.16", critical,
+								String.format("송신 %d%%", bps *100 / speed));
 						}
+					} else if (v.critical) {
+						v.critical = false;
+						
+						return new CriticalEvent(id, idx, "1.3.6.1.2.1.2.2.1.16", false,
+							String.format("송신 %d%%", bps *100 / speed));
 					}
 				}
 			}

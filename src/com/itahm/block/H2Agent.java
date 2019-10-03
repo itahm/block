@@ -208,7 +208,48 @@ public class H2Agent implements Commander, Agent, Listener, Listenable {
 				try (Statement stmt = c.createStatement()) {
 					try (ResultSet rs = stmt.executeQuery("SELECT key, value FROM config;")) {
 						while (rs.next()) {
-							config.set(rs.getString(1), rs.getString(2));
+							switch (rs.getString(1)) {
+							case "requestInterval":
+								this.config.requestInterval = Long.valueOf(rs.getString(2));
+								
+								break;
+							case "timeout":
+								this.config.timeout = Integer.valueOf(rs.getString(2));
+
+								break;
+							case "retry":
+								this.config.retry = Integer.valueOf(rs.getString(2));
+
+								break;
+							case "saveInterval":
+								this.config.saveInterval = Long.valueOf(rs.getString(2));
+
+								break;
+							case "storeDate":
+								this.config.storeDate = Long.valueOf(rs.getString(2));
+
+								break;
+							case "smtpEnable":
+								this.config.smtpEnable = Boolean.valueOf(rs.getString(2));
+								
+								break;
+							case "smtpServer":
+								this.config.smtpServer = rs.getString(2);
+								
+								break;
+							case "smtpProtocol":
+								this.config.smtpProtocol = rs.getString(2);
+								
+								break;
+							case "smtpUser":
+								this.config.smtpUser = rs.getString(2);
+								
+								break;
+							case "smtpPassword":
+								this.config.smtpPassword = rs.getString(2);
+								
+								break;
+							}
 						}
 					}
 				}
@@ -673,8 +714,8 @@ public class H2Agent implements Commander, Agent, Listener, Listenable {
 	@Override
 	public boolean addUser(String name, JSONObject user) {
 		try (Connection c = this.connPool.getConnection()) {
-			try (PreparedStatement pstmt = c.prepareStatement("INSERT INTO user (name, email, sms) VALUES"+
-				" (?, ?, ?);")) {
+			try (PreparedStatement pstmt = c.prepareStatement("INSERT INTO user (name, email, sms)"+
+				" VALUES(?, ?, ?);")) {
 				pstmt.setString(1, name);
 				pstmt.setString(2, user.has("email")? user.getString("email"): null);
 				pstmt.setString(3, user.has("sms")? user.getString("sms"): null);
@@ -756,7 +797,7 @@ public class H2Agent implements Commander, Agent, Listener, Listenable {
 	}
 
 	@Override
-	public JSONObject getConfig() {
+	public JSONObject getConfig() {		
 		return this.config.getJSONObject();
 	}
 
@@ -912,7 +953,6 @@ public class H2Agent implements Commander, Agent, Listener, Listenable {
 				c.get(Calendar.MONTH) +1,
 				c.get(Calendar.DAY_OF_MONTH)))));
 		} catch (Exception e) {
-			e.printStackTrace();
 		}
 		
 		Map<String, Map<String, Value>> indexMap;
@@ -1656,43 +1696,45 @@ public class H2Agent implements Commander, Agent, Listener, Listenable {
 		if (code == SnmpConstants.SNMP_ERROR_SUCCESS) {
 			Parseable parser;
 			CriticalEvent event;
-			for (Parser p : Parser.values()) {
-				parser = p.getInstance();
+			
+			try(Connection c = this.connPool.getConnection()) {
+				try (PreparedStatement pstmt = c.prepareStatement("UPDATE resource"+
+					" SET critical=?"+
+					" WHERE id=? AND _index=? AND oid=?;")) {
+					
+					for (Parser p : Parser.values()) {
+						parser = p.getInstance();
 				
-				if (!(parser instanceof ResponseTime)) {
-					for (String index : indexMap.keySet()) {
-						event = parser.parse(id, index, indexMap.get(index));
-						
-						if (event != null) {
-							try(Connection c = this.connPool.getConnection()) {
-								try (PreparedStatement pstmt = c.prepareStatement("UPDATE resource"+
-									" SET critical=?"+
-									" WHERE id=? AND _index=? AND oid=?;")) {
+						if (!(parser instanceof ResponseTime)) {
+							for (String index : indexMap.keySet()) {
+								event = parser.parse(id, index, indexMap.get(index));
+								
+								if (event != null) {
 									pstmt.setBoolean(1, event.critical);
 									pstmt.setLong(2, event.id);
 									pstmt.setString(3, event.index);
 									pstmt.setString(4, event.oid);
 									
 									pstmt.executeUpdate();
+									
+									sendEvent(event);
 								}
 								
-								sendEvent(event);
-							}catch(SQLException sqle) {
-								sqle.printStackTrace();
+								if (parser instanceof HRProcessorLoad) {
+									Integer load = ((HRProcessorLoad)parser).getLoad(id);
+									
+									if (load != null) {
+										this.informResourceEvent(id, new OID("1.3.6.1.2.1.25.3.3.1.2"), new OID("0"), new Integer32(load));
+									}
+								}
 							}
 						}
 						
-						if (parser instanceof HRProcessorLoad) {
-							Integer load = ((HRProcessorLoad)parser).getLoad(id);
-							
-							if (load != null) {
-								this.informResourceEvent(id, new OID("1.3.6.1.2.1.25.3.3.1.2"), new OID("0"), new Integer32(load));
-							}
-						}
+						parser.submit(id);
 					}
 				}
-				
-				parser.submit(id);
+			}catch(SQLException sqle) {
+				sqle.printStackTrace();
 			}
 		}
 		else {
@@ -2530,25 +2572,39 @@ public class H2Agent implements Commander, Agent, Listener, Listenable {
 	@Override
 	public boolean setSMTP(JSONObject smtp) {
 		try (Connection c = this.connPool.getConnection()) {
-			if (smtp.has("disabled") && smtp.getBoolean("disabled")) {
+			if (smtp == null) {
 				try (Statement stmt = c.createStatement()){
-					stmt.executeUpdate("UPDATE config SET value='true' where key='smtpDisabled';");						
+					stmt.executeUpdate("UPDATE config SET value='false' where key='smtpEnable';");						
 				}
+				
+				this.config.smtpEnable = false;
 			} else {
+				String
+					server = smtp.getString("server"),
+					protocol = smtp.getString("protocol"),
+					user = smtp.getString("user"),
+					pass = smtp.getString("password");
+				
 				try (PreparedStatement pstmt = c.prepareStatement("MERGE INTO config (key, value)"+
 					" VALUES('smtpServer', ?)"+
 					" ,('smtpProtocol', ?)"+
 					" ,('smtpUser', ?)"+
 					" ,('smtpPassword', ?)"+
-					" ,('smtpdisabled', 'false');")) {
+					" ,('smtpEnable', 'true');")) {
 					
-					pstmt.setString(1, smtp.getString("server"));
-					pstmt.setString(2, smtp.getString("user"));
-					pstmt.setString(3, smtp.getString("password"));
-					pstmt.setString(4, smtp.getString("protocol"));
+					pstmt.setString(1, server);
+					pstmt.setString(2, protocol);
+					pstmt.setString(3, user);
+					pstmt.setString(4, pass);
 					
 					pstmt.executeUpdate();
 				}
+				
+				this.config.smtpEnable = true;
+				this.config.smtpServer = server;
+				this.config.smtpProtocol = protocol;
+				this.config.smtpUser = user;
+				this.config.smtpPassword = pass;
 			}
 			
 			return true;
@@ -2639,10 +2695,20 @@ public class H2Agent implements Commander, Agent, Listener, Listenable {
 		try (Connection c = this.connPool.getConnection()) {
 			try (PreparedStatement pstmt = c.prepareStatement("UPDATE user SET"+
 				" email=?,"+
-				" sms=?,"+
+				" sms=?"+
 				" WHERE name=?;")) {
-				pstmt.setString(1, user.getString("email"));
-				pstmt.setString(2, user.getString("sms"));
+				if (user.has("email")) {
+					pstmt.setString(1, user.getString("email"));	
+				} else {
+					pstmt.setNull(1, Types.NULL);
+				}
+				
+				if (user.has("sms")) {
+					pstmt.setString(2, user.getString("sms"));	
+				} else {
+					pstmt.setNull(2, Types.NULL);
+				}
+				
 				pstmt.setString(3, user.getString("name"));
 				
 				pstmt.executeUpdate();

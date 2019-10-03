@@ -50,6 +50,10 @@ abstract public class IFErrors extends AbstractParser {
 						
 						return new CriticalEvent(id, idx, getErrorsOID(), critical, String.format("%s %dcps", getEventTitle(), cps));
 					}
+				} else if (v.critical) {
+					v.critical = false;
+					
+					return new CriticalEvent(id, idx, getErrorsOID(), false, String.format("%s %dcps", getEventTitle(), cps));
 				}
 			}
 		}

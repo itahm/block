@@ -1,6 +1,9 @@
 package com.itahm.block;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
@@ -25,6 +28,7 @@ public class Batch extends Timer {
 	private final Map<Long, Map<String, Map<String, Value>>> resourceMap;
 	private final Map<String, Rule> ruleMap;
 	private Saver saver;
+	private int storeDate = 0;
 	private JdbcConnectionPool connPool;
 	private JdbcConnectionPool nextPool;
 	
@@ -48,6 +52,7 @@ public class Batch extends Timer {
 		createRollingTable();
 		
 		super.scheduleAtFixedRate(new Roller(this), Util.trimDate(calendar).getTime(), TimeUnit.DAYS.toMillis(1));
+		super.scheduleAtFixedRate(new Remover(this), Util.trimDate(calendar).getTime(), TimeUnit.DAYS.toMillis(1));
 	}
 	
 	@Override
@@ -115,6 +120,28 @@ public class Batch extends Timer {
 		return this.connPool.getConnection();
 	}
 	
+	private void remove() {
+		if (this.storeDate <= 0) {
+			return;
+		}
+		
+		try {
+			Files.list(this.path).filter(Files::isRegularFile).filter(p -> {
+				return p.endsWith(".mv.db");
+			}).forEach(p -> {
+				try {
+					FileTime ft = Files.getLastModifiedTime(p);
+					
+					ft.toMillis();
+				} catch (IOException ioe) {
+					ioe.printStackTrace();
+				}
+			});
+		} catch (IOException ioe) {
+			ioe.printStackTrace();
+		}
+	}
+	
 	public void schedule(long period) {
 		if (this.saver != null) {
 			this.saver.cancel();
@@ -123,6 +150,10 @@ public class Batch extends Timer {
 		this.saver = new Saver(this);
 		
 		super.schedule(this.saver, period, period);
+	}
+	
+	public void setStoreDate(int period) {
+		this.storeDate = period;
 	}
 	
 	private void save() {
@@ -190,6 +221,20 @@ public class Batch extends Timer {
 		@Override
 		public void run() {
 			this.batch.save();
+		}
+		
+	}
+	
+	private static class Remover extends TimerTask {
+		private final Batch batch;
+		
+		public Remover(Batch batch) {
+			this.batch = batch;
+		}
+		
+		@Override
+		public void run() {
+			this.batch.remove();
 		}
 		
 	}

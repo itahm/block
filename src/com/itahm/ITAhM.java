@@ -6,8 +6,10 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
-import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.regex.Pattern;
+
+import javax.mail.MessagingException;
 
 import com.itahm.http.Connection;
 import com.itahm.http.HTTPServer;
@@ -61,8 +63,6 @@ public class ITAhM extends HTTPServer implements Listener {
 		synchronized(agentStatus) {
 			agentStatus = Status.RUN;
 		}
-		// TODO sms, app 을 위한 리스너 등록
-		//agent.addEventListener();
 	}
 
 	public static class Builder {
@@ -323,7 +323,7 @@ public class ITAhM extends HTTPServer implements Listener {
 			close();
 		}
 		else if (caller instanceof SMTP) {
-			
+			((Exception)args[0]).printStackTrace();
 		}
 		
 		if (event == null) {
@@ -332,6 +332,33 @@ public class ITAhM extends HTTPServer implements Listener {
 		
 		synchronized(this) {
 			try {
+				if (this.smtp != null) {
+					ArrayList<String> list = new ArrayList<>();
+					JSONObject
+						userData = this.agent.getUser(),
+						user;
+					
+					for (Object name : userData.keySet()) {
+						user = userData.getJSONObject((String)name);
+						
+						if (user.has("email")) {
+							list.add(user.getString("email"));
+						}
+					}
+					
+					if (list.size() > 0) {
+						String [] sa = new String [list.size()];
+						
+						list.toArray(sa);
+						
+						try {
+							this.smtp.send(event.getString("message"), sa);
+						} catch (MessagingException me) {
+							me.printStackTrace();
+						}
+					}
+				}
+				
 				this.event = event.toString().getBytes(StandardCharsets.UTF_8.name());
 				
 				notifyAll();
@@ -482,26 +509,27 @@ public class ITAhM extends HTTPServer implements Listener {
 					} catch (IOException ioe) {
 						ioe.printStackTrace();
 					}
+					
+					this.smtp = null;
 				}
 				
-				if (this.agent.setSMTP(request.getJSONObject("value"))) {
+				if (!request.has("value")) {
+					this.agent.setSMTP(null);
+				} else if (this.agent.setSMTP(request.getJSONObject("value"))) {
 					JSONObject smtp = request.getJSONObject("value");
+					String user = smtp.getString("user");
 					
-					switch(smtp.getString("protocol").toUpperCase()) {
-					case "SMTP":
-						this.smtp = new SMTP(smtp.getString("server"), smtp.getString("user"));
-						
-						break;
-					case "TLS":
-						this.smtp = new SMTP(smtp.getString("server"), smtp.getString("user"), smtp.getString("password"), SMTP.Protocol.TLS);
-						
-						break;
-					case "SSL":
-						this.smtp = new SMTP(smtp.getString("server"), smtp.getString("user"), smtp.getString("password"), SMTP.Protocol.SSL);
-						
-						break;
-					default:
-						response.setStatus(Response.Status.BADREQUEST);
+					this.smtp = new SMTP(smtp.getString("server"),
+						smtp.getString("protocol"),
+						user,
+						smtp.getString("password"));
+					
+					this.smtp.addEventListener(this);
+					
+					try {
+						this.smtp.send("ITAhM 이벤트 연동.", user);
+					} catch (MessagingException me) {
+						response.setStatus(Response.Status.NOTIMPLEMENTED);
 					}
 				}
 				
@@ -738,7 +766,8 @@ public class ITAhM extends HTTPServer implements Listener {
 			return this.agent.getTop(request.getJSONArray("list"), request.getJSONObject("resource"));
 		case "TRAFFIC":
 			return this.agent.getTraffic(request.getJSONObject("traffic"));
-		
+		case "USER":
+			return this.agent.getUser();
 		default:
 			
 			throw new JSONException("Target is not found.");

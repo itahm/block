@@ -74,6 +74,11 @@ public class IFInOctets implements Parseable {
 							return new CriticalEvent(id, idx, "1.3.6.1.2.1.2.2.1.10", critical,
 								String.format("수신 %d%%", bps *100 / speed));
 						}
+					} else if (v.critical) {
+						v.critical = false;
+						
+						return new CriticalEvent(id, idx, "1.3.6.1.2.1.2.2.1.10", false,
+							String.format("수신 %d%%", bps *100 / speed));
 					}
 				}
 			}

@@ -94,46 +94,40 @@ public class Bean {
 		public int retry = 2;
 		public long saveInterval = 60000L *5;
 		public long storeDate = 0L;
+		public boolean smtpEnable = false;
+		public String smtpServer;
+		public String smtpProtocol;
+		public String smtpUser;
+		public String smtpPassword;
 		
 		public JSONObject getJSONObject() {
-			return new JSONObject()
+			JSONObject config = new JSONObject();
+			
+			config
 				.put("requestInterval", this.requestInterval)
 				.put("timeout", this.timeout)
 				.put("retry", this.retry)
 				.put("saveInterval", this.saveInterval)
-				.put("storeDate", this.storeDate);
-		}
-		
-		public void set(String key, String value) {
-			switch (key) {
-			case "requestInterval":
-				this.requestInterval = Long.valueOf(value);
-			case "timeout":
-				this.timeout = Integer.valueOf(value);
-			case "retry":
-				this.retry = Integer.valueOf(value);
-			case "saveInterval":
-				this.saveInterval = Long.valueOf(value);
-			case "storeDate":
-				this.storeDate = Long.valueOf(value);
-			}
-		}
-		
-		public String get(String key) {
-			switch (key) {
-			case "requestInterval":
-				return Long.toString(this.requestInterval);
-			case "timeout":
-				return Integer.toString(this.timeout);
-			case "retry":
-				return Integer.toString(this.retry);
-			case "saveInterval":
-				return Long.toString(this.saveInterval);
-			case "storeDate":
-				return Long.toString(this.storeDate);
+				.put("storeDate", this.storeDate)
+				.put("smtpEnable", this.smtpEnable);
+			
+			if (this.smtpServer != null) {
+				config.put("smtpServer", this.smtpServer);
 			}
 			
-			return null;
+			if (this.smtpProtocol != null) {
+				config.put("smtpProtocol", this.smtpProtocol);
+			}
+			
+			if (this.smtpUser != null) {
+				config.put("smtpUser", this.smtpUser);
+			}
+			
+			if (this.smtpPassword != null) {
+				config.put("smtpPassword", this.smtpPassword);
+			}
+			
+			return config;
 		}
 	}
 }
