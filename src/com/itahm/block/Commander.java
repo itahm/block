@@ -1,5 +1,6 @@
 package com.itahm.block;
 
+import com.itahm.block.Bean.Event;
 import com.itahm.json.JSONArray;
 import com.itahm.json.JSONObject;
 import com.itahm.util.Listener;
@@ -39,6 +40,7 @@ public interface Commander {
 	public JSONObject getTraffic(JSONObject traffic);
 	public JSONObject getUser();
 	public JSONObject getUser(String name);
+	public void sendEvent (Event event);
 	public boolean setAccount(String username, JSONObject account);
 	public boolean setCritical(long id, String index, String oid, int critical);
 	public boolean setIcon(String id, JSONObject icon);

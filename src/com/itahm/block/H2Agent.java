@@ -1676,7 +1676,7 @@ public class H2Agent implements Commander, Agent, Listener, Listenable {
 					pstmt.executeUpdate();
 				}
 				
-				sendEvent(new Event("status", id, status?Event.NORMAL: Event.ERROR, String.format("응답 %s", status? "정상": "없음")));
+				sendEvent(new Event(Event.STATUS, id, status? Event.NORMAL: Event.ERROR, String.format("응답 %s", status? "정상": "없음")));
 			
 				this.statusMap.put(id, status);
 			} catch(SQLException sqle) {
@@ -1754,7 +1754,7 @@ public class H2Agent implements Commander, Agent, Listener, Listenable {
 					pstmt.executeUpdate();
 				}
 				
-				sendEvent(new Event("snmp", id, code == 0? Event.NORMAL: Event.WARNING,
+				sendEvent(new Event(Event.SNMP, id, code == 0? Event.NORMAL: Event.WARNING,
 					String.format("SNMP %s", code == 0? "응답 정상": String.format("오류코드 %d", code))));
 				
 				this.snmpMap.put(id, code);
@@ -1813,16 +1813,40 @@ public class H2Agent implements Commander, Agent, Listener, Listenable {
 		}
 		
 		if (rule.onChange){
-			Map<String, Map<String, Value>> idMap = this.resourceMap.get(id);
+			Map<String, Map<String, Value>> indexMap = this.resourceMap.get(id);
 			
-			if (idMap != null) {
-				Map<String, Value> oidMap = idMap.get(index);
+			if (indexMap != null) {
+				Map<String, Value> oidMap = indexMap.get(index);
 				
 				if (oidMap != null) {
 					Value v = oidMap.get(oid);
 					
 					if (v != null && !v.value.equals(value)) {
-						//TODO
+						if (rule.name.equals("ifOperStatus")) {
+							Value ifName = oidMap.get("1.3.6.1.2.1.31.1.1.1.1");
+							
+							if (ifName != null) {
+								if (Integer.valueOf(value) == 1) {
+									sendEvent(new Event(Event.CHANGE, id, Event.NORMAL,
+										String.format("Interface %s UP.", ifName.value)));
+								} else {
+									sendEvent(new Event(Event.CHANGE, id, Event.ERROR,
+										String.format("Interface %s DOWN.", ifName.value)));
+								}
+							} else {
+								if (Integer.valueOf(value) == 1) {
+									sendEvent(new Event(Event.CHANGE, id, Event.NORMAL,
+										String.format("Interface.%s UP.", index)));
+								} else {
+									sendEvent(new Event(Event.CHANGE, id, Event.ERROR,
+										String.format("Interface.%s DOWN.", index)));
+								}
+							}
+						} else {
+							sendEvent(new Event(Event.CHANGE, id, Event.NORMAL,
+								String.format("%s %s", rule.name.toUpperCase(), Lang.INFO_SNMP_CHANGE)));
+						}
+						
 					}
 				}
 			}
@@ -1849,36 +1873,32 @@ public class H2Agent implements Commander, Agent, Listener, Listenable {
 	}
 	
 	public void informTestEvent(long id, String ip, Protocol protocol, Object result) {
-		try {
-			switch (protocol) {
-			case ICMP:
-				if ((Boolean)result && registerICMPNode(id, ip)) {
-					sendEvent(new Event("register", id, Event.NORMAL, "ICMP 등록 성공."));
-				}
-				else {
-					sendEvent(new Event("register", id, Event.WARNING, "ICMP 등록 실패."));
-				}
-				
-				break;
-			case TCP:
-				if ((Boolean)result && registerTCPNode(id, ip)) {
-					sendEvent(new Event("register", id, Event.NORMAL, "TCP 등록 성공."));
-				}
-				else {
-					sendEvent(new Event("register", id, Event.WARNING, "TCP 등록 실패."));
-				}
-				
-				break;
-			default:
-				if (result != null && registerSNMPNode(id, ip, (String)result)) {
-					sendEvent(new Event("register", id, Event.NORMAL, "SNMP 등록 성공."));
-				}
-				else {
-					sendEvent(new Event("register", id, Event.NORMAL, "SNMP 등록 실패."));
-				}
+		switch (protocol) {
+		case ICMP:
+			if ((Boolean)result && registerICMPNode(id, ip)) {
+				sendEvent(new Event(Event.REGISTER, id, Event.NORMAL, "ICMP 등록 성공."));
 			}
-		} catch (SQLException sqle) {
-			sqle.printStackTrace();
+			else {
+				sendEvent(new Event(Event.REGISTER, id, Event.WARNING, "ICMP 등록 실패."));
+			}
+			
+			break;
+		case TCP:
+			if ((Boolean)result && registerTCPNode(id, ip)) {
+				sendEvent(new Event(Event.REGISTER, id, Event.NORMAL, "TCP 등록 성공."));
+			}
+			else {
+				sendEvent(new Event(Event.REGISTER, id, Event.WARNING, "TCP 등록 실패."));
+			}
+			
+			break;
+		default:
+			if (result != null && registerSNMPNode(id, ip, (String)result)) {
+				sendEvent(new Event(Event.REGISTER, id, Event.NORMAL, "SNMP 등록 성공."));
+			}
+			else {
+				sendEvent(new Event(Event.REGISTER, id, Event.NORMAL, "SNMP 등록 실패."));
+			}
 		}
 	}
 	
@@ -1918,7 +1938,7 @@ public class H2Agent implements Commander, Agent, Listener, Listenable {
 				}
 				
 				if (registerSNMPNode(id, ip, profile)) {
-					sendEvent(new Event("search", id, Event.NORMAL, "SNMP 노드  탐지."));
+					sendEvent(new Event(Event.SEARCH, id, Event.NORMAL, "SNMP 노드  탐지."));
 				}
 				
 				this.nextNodeID++;
@@ -2046,30 +2066,35 @@ public class H2Agent implements Commander, Agent, Listener, Listenable {
 		return false;
 	}
 	
-	private void sendEvent (Event event) throws SQLException {
+	@Override
+	public void sendEvent (Event event) {
 		try(Connection c = this.connPool.getConnection()) {
 			String name;
 			
-			try (PreparedStatement pstmt = c.prepareStatement("SELECT name, ip FROM node WHERE id=?;")) {				
-				pstmt.setLong(1, event.id);
-				
-				try (ResultSet rs = pstmt.executeQuery()) {
-					if (!rs.next()) {
-						return;
-					}
+			if (event.id > 0) {
+				try (PreparedStatement pstmt = c.prepareStatement("SELECT name, ip FROM node WHERE id=?;")) {				
+					pstmt.setLong(1, event.id);
 					
-					name = rs.getString(1);
-					
-					if (name == null) {
-						name = rs.getString(2);
+					try (ResultSet rs = pstmt.executeQuery()) {
+						if (!rs.next()) {
+							return;
+						}
+						
+						name = rs.getString(1);
 						
 						if (name == null) {
-							name = "NODE."+ event.id;
+							name = rs.getString(2);
+							
+							if (name == null) {
+								name = "NODE."+ event.id;
+							}
 						}
 					}
 				}
+			} else {
+				name = event.origin.toUpperCase();
 			}
-						
+			
 			long eventID;
 			
 			synchronized(this.nextEventID) {
@@ -2105,6 +2130,8 @@ public class H2Agent implements Commander, Agent, Listener, Listenable {
 				.put("name", name)
 				.put("message", String.format("%s %s",name, event.message))
 				.put("eventID", eventID));
+		} catch (SQLException sqle) {
+			sqle.printStackTrace();
 		}
 	}
 	
@@ -2658,7 +2685,7 @@ public class H2Agent implements Commander, Agent, Listener, Listenable {
 			
 			config.storeDate = period;
 			
-			//TODO 파일정리 설정하기
+			this.batch.setStoreDate(period);
 			
 			return true;
 		} catch (SQLException sqle) {

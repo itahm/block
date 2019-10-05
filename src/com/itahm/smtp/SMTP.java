@@ -108,7 +108,7 @@ public class SMTP extends Authenticator implements Runnable, Closeable {
 
 	@Override
 	public void run() {
-		MimeMessage mm;
+		MimeMessage mm = null;
 		
 		while (!this.thread.isInterrupted()) {
 			try {
@@ -124,7 +124,7 @@ public class SMTP extends Authenticator implements Runnable, Closeable {
 					Transport.send(mm);
 				} catch (MessagingException me) {
 					for (Listener l :this.listenerList) {
-						l.onEvent(this, me);
+						l.onEvent(this, mm, me);
 					}
 				}
 			} catch (InterruptedException ie) {

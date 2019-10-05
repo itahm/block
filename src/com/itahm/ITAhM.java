@@ -24,6 +24,8 @@ import com.itahm.util.Listener;
 import com.itahm.util.Util;
 import com.itahm.block.Commander;
 import com.itahm.block.H2Agent;
+import com.itahm.block.Lang;
+import com.itahm.block.Bean.Event;
 import com.itahm.smtp.SMTP;
 
 public class ITAhM extends HTTPServer implements Listener {
@@ -55,6 +57,12 @@ public class ITAhM extends HTTPServer implements Listener {
 		}
 
 		agent = new H2Agent(root.resolve("data"));
+		
+		JSONObject config = this.agent.getConfig();
+		
+		if (config.has("smtpEnable") && config.getBoolean("smtpEnable")) {
+			setSMTP(config);
+		}
 		
 		agent.addEventListener(this);
 		
@@ -294,6 +302,15 @@ public class ITAhM extends HTTPServer implements Listener {
 		}
 	}
 	
+	private void setSMTP(JSONObject config) {
+		this.smtp = new SMTP(config.getString("smtpServer"),
+			config.getString("smtpProtocol"),
+			config.getString("smtpUser"),
+			config.getString("smtpPassword"));
+		
+		this.smtp.addEventListener(this);
+	}
+	
 	public void close() {
 		synchronized (this.agentStatus) {
 			if (this.agentStatus != Status.STOP) {
@@ -323,7 +340,10 @@ public class ITAhM extends HTTPServer implements Listener {
 			close();
 		}
 		else if (caller instanceof SMTP) {
-			((Exception)args[0]).printStackTrace();
+			//MimeMessage mm = (MimeMessage)args[0];
+			//MessagingException me = (MessagingException)args[1];
+			
+			this.agent.sendEvent(new Event(Event.SYSTEM, 0, Event.WARNING, Lang.WARNING_SMTP_FAIL));
 		}
 		
 		if (event == null) {
@@ -516,18 +536,12 @@ public class ITAhM extends HTTPServer implements Listener {
 				if (!request.has("value")) {
 					this.agent.setSMTP(null);
 				} else if (this.agent.setSMTP(request.getJSONObject("value"))) {
-					JSONObject smtp = request.getJSONObject("value");
-					String user = smtp.getString("user");
+					JSONObject config = this.agent.getConfig();
 					
-					this.smtp = new SMTP(smtp.getString("server"),
-						smtp.getString("protocol"),
-						user,
-						smtp.getString("password"));
-					
-					this.smtp.addEventListener(this);
+					setSMTP(config);
 					
 					try {
-						this.smtp.send("ITAhM 이벤트 연동.", user);
+						this.smtp.send(Lang.INFO_SMTP_INIT, config.getString("smtpUser"));
 					} catch (MessagingException me) {
 						response.setStatus(Response.Status.NOTIMPLEMENTED);
 					}

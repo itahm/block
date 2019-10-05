@@ -61,7 +61,7 @@ public class Bean {
 		public final boolean critical;
 		
 		public CriticalEvent(long id, String index, String oid, boolean critical, String title) {
-			super("critical", id, critical? Event.ERROR: Event.NORMAL, String.format("%s 임계 %s", title, critical? "초과": "정상"));
+			super(Event.CRITICAL, id, critical? Event.ERROR: Event.NORMAL, String.format("%s 임계 %s", title, critical? "초과": "정상"));
 			
 			this.index = index;
 			this.oid = oid;
@@ -70,6 +70,14 @@ public class Bean {
 	}
 	
 	public static class Event {
+		public static final String STATUS = "status";
+		public static final String SNMP = "snmp";
+		public static final String REGISTER = "register";
+		public static final String SEARCH = "search";
+		public static final String CRITICAL = "critical";
+		public static final String SYSTEM = "system";
+		public static final String CHANGE = "change";
+		
 		public static final int NORMAL = 0;
 		public static final int WARNING = 1;
 		public static final int ERROR = 2;

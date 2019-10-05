@@ -18,6 +18,7 @@ import org.h2.jdbcx.JdbcConnectionPool;
 
 import com.itahm.block.Bean.Rule;
 import com.itahm.block.Bean.Value;
+import com.itahm.block.Lang;
 import com.itahm.util.Util;
 
 public class Batch extends Timer {
@@ -80,7 +81,7 @@ public class Batch extends Timer {
 						", timestamp BIGINT DEFAULT NULL);");
 				}
 				
-				System.out.format("Rolling initialized in %dms.\n", System.currentTimeMillis() - start);
+				System.out.format("%s %dms.\n", Lang.INFO_NEW_ROLLING, System.currentTimeMillis() - start);
 				
 				break;
 			} catch (SQLException sqle) {
@@ -124,19 +125,29 @@ public class Batch extends Timer {
 		if (this.storeDate <= 0) {
 			return;
 		}
+
+		Calendar c = Calendar.getInstance();
+		long millis;
+		
+		c.set(Calendar.DATE, c.get(Calendar.DATE) - this.storeDate);
+		
+		millis = c.getTimeInMillis();
 		
 		try {
-			Files.list(this.path).filter(Files::isRegularFile).filter(p -> {
-				return p.endsWith(".mv.db");
-			}).forEach(p -> {
-				try {
-					FileTime ft = Files.getLastModifiedTime(p);
-					
-					ft.toMillis();
-				} catch (IOException ioe) {
-					ioe.printStackTrace();
-				}
-			});
+			Files.list(this.path).
+				filter(Files::isRegularFile).forEach(p -> {
+					try {
+						FileTime ft = Files.getLastModifiedTime(p);
+						
+						if (millis > ft.toMillis()) {
+							System.out.println(String.format("%s %s", Lang.INFO_REMOVE_DB, p.getFileName()));
+							
+							Files.delete(p);
+						}
+					} catch (IOException ioe) {
+						ioe.printStackTrace();
+					}
+				});
 		} catch (IOException ioe) {
 			ioe.printStackTrace();
 		}
@@ -154,6 +165,8 @@ public class Batch extends Timer {
 	
 	public void setStoreDate(int period) {
 		this.storeDate = period;
+		
+		remove();
 	}
 	
 	private void save() {
