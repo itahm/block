@@ -2,7 +2,6 @@ package com.itahm.smtp;
 
 import java.io.Closeable;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.Date;
 import java.util.Properties;
 import java.util.concurrent.BlockingQueue;
@@ -16,8 +15,6 @@ import javax.mail.Transport;
 import javax.mail.internet.InternetAddress;
 import javax.mail.internet.MimeMessage;
 
-import com.itahm.util.Listener;
-
 public class SMTP extends Authenticator implements Runnable, Closeable {
 
 	public enum Protocol {
@@ -25,7 +22,6 @@ public class SMTP extends Authenticator implements Runnable, Closeable {
 	}
 	
 	private final Thread thread = new Thread(this, "SMTP Server");
-	private final ArrayList<Listener> listenerList = new ArrayList<>();
 	private final Properties props = System.getProperties();
 	private final BlockingQueue<MimeMessage> queue = new LinkedBlockingQueue<>();
 	private Boolean isClosed = false;
@@ -62,14 +58,6 @@ public class SMTP extends Authenticator implements Runnable, Closeable {
 		
 		thread.setDaemon(true);
 		thread.start();
-	}
-	
-	public void addEventListener(Listener listener) {
-		this.listenerList.add(listener);
-	}
-	
-	public void removeEventListener(Listener listener) {
-		this.listenerList.remove(listener);
 	}
 	
 	public void send(String title, String... to) throws MessagingException {
@@ -123,9 +111,7 @@ public class SMTP extends Authenticator implements Runnable, Closeable {
 					
 					Transport.send(mm);
 				} catch (MessagingException me) {
-					for (Listener l :this.listenerList) {
-						l.onEvent(this, mm, me);
-					}
+					me.printStackTrace();
 				}
 			} catch (InterruptedException ie) {
 				break;

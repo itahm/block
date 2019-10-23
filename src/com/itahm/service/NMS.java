@@ -40,8 +40,6 @@ public class NMS implements Serviceable, Listener {
 				config.getString("smtpProtocol"),
 				config.getString("smtpUser"),
 				config.getString("smtpPassword"));
-			
-			this.smtp.addEventListener(this);
 		}
 	}
 	
@@ -82,13 +80,13 @@ public class NMS implements Serviceable, Listener {
 	}
 
 	@Override
-	synchronized public void service(JSONObject request, Response response) {
+	synchronized public boolean service(JSONObject request, Response response) {
 		String command = request.getString("command").toUpperCase();
 		
 		if (this.agent == null) {
 			response.setStatus(Response.Status.UNAVAILABLE);
 			
-			return;
+			return true;
 		}
 		
 		try {
@@ -116,9 +114,7 @@ public class NMS implements Serviceable, Listener {
 				
 				break;
 			default:
-				if (!parseRequest(command, request, response)) {
-					throw new JSONException("Command not found.");
-				}
+				return parseRequest(command, request, response);
 			}
 					
 		} catch (JSONException | UnsupportedEncodingException e) {
@@ -127,6 +123,8 @@ public class NMS implements Serviceable, Listener {
 			response.write(new JSONObject().
 				put("error", e.getMessage()).toString());
 		}
+		
+		return true;
 	}
 		
 	@Override
@@ -208,10 +206,7 @@ public class NMS implements Serviceable, Listener {
 				
 				break;
 			default:
-				response.write(new JSONObject().
-					put("error", "Command not found.").toString());
-				
-				response.setStatus(Response.Status.BADREQUEST);
+				return false;
 			}
 		} catch (JSONException jsone) {
 			response.write(new JSONObject().
@@ -230,11 +225,11 @@ public class NMS implements Serviceable, Listener {
 	}
 	
 	private void add(JSONObject request, Response response) {
-		boolean success = true;
-		
 		switch(request.getString("target").toUpperCase()) {
 		case "ACCOUNT":
-			success = this.agent.addAccount(request.getString("username"), request.getJSONObject("account"));
+			if (!this.agent.addAccount(request.getString("username"), request.getJSONObject("account"))) {
+				response.setStatus(Response.Status.CONFLICT);
+			}
 			
 			break;
 		case "ICON":
@@ -273,15 +268,14 @@ public class NMS implements Serviceable, Listener {
 			
 			break;
 		case "USER":
-			this.agent.addUser(request.getString("name"), request.getJSONObject("user"));
+			if (!this.agent.addUser(request.getString("name"), request.getJSONObject("user"))) {
+				response.setStatus(Response.Status.CONFLICT);
+			}
 			
 			break;
 		default:
 			
 			throw new JSONException("Target is not found.");
-		}
-		
-		if (!success) {
 		}
 	}
 	
@@ -319,7 +313,7 @@ public class NMS implements Serviceable, Listener {
 				}
 				
 				break;
-			case "snmpServer":
+			case "smtpServer":
 				if (this.smtp != null) {
 					try {
 						this.smtp.close();
