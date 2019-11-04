@@ -31,6 +31,8 @@ public class IFInOctets implements Parseable {
 		
 		if ((v = oidMap.get("1.3.6.1.4.1.49447.3.5")) != null) {
 			speed = Long.valueOf(v.value);
+		} else if ((v = oidMap.get("1.3.6.1.2.1.31.1.1.1.15")) != null) {
+			speed = Long.valueOf(v.value) *1000000L;
 		} else if ((v = oidMap.get("1.3.6.1.2.1.2.2.1.5")) != null) {
 			speed = Long.valueOf(v.value);
 		}

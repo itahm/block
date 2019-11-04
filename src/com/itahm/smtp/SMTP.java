@@ -22,62 +22,85 @@ public class SMTP extends Authenticator implements Runnable, Closeable {
 	}
 	
 	private final Thread thread = new Thread(this, "SMTP Server");
-	private final Properties props = System.getProperties();
 	private final BlockingQueue<MimeMessage> queue = new LinkedBlockingQueue<>();
 	private Boolean isClosed = false;
-	private final String user;
-	private final String password;
-	private final boolean auth;
+	private Boolean isEnabled = false;
+	private Properties props;
+	private String user;
+	private String password;
+	private boolean auth;
 	
-	public SMTP(String server, String protocol, final String user, final String password) {
-		this.user = user;
-		this.password = password;
-		
-		props.put("mail.smtp.host", server);
-		//props.put("mail.smtp.timeout", TIMEOUT);
-		switch (protocol.toUpperCase()) {
-			case "SSL":
-				props.put("mail.smtp.port", "465");
-				props.put("mail.smtp.socketFactory.port", "465");
-				props.put("mail.smtp.socketFactory.class", "javax.net.ssl.SSLSocketFactory");
-				props.put("mail.smtp.auth", "true");
-				this.auth = true;
-				
-				break;
-			case "TLS":
-				props.put("mail.smtp.port", "587");
-				props.put("mail.smtp.starttls.enable", "true");
-				props.put("mail.smtp.auth", "true");
-				
-				this.auth = true;
-				
-				break;
-			default:
-				this.auth = false;
-		}
-		
+	public SMTP() {
 		thread.setDaemon(true);
 		thread.start();
 	}
 	
-	public void send(String title, String... to) throws MessagingException {
-		MimeMessage mm = new MimeMessage(Session.getInstance(this.props, this.auth? this: null));
-		
-		mm.addHeader("Content-type", "text/HTML; charset=UTF-8");
-		mm.addHeader("format", "flowed");
-		mm.addHeader("Content-Transfer-Encoding", "8bit");
-		
-		mm.setSentDate(new Date());
-		
-		mm.setSubject(title, "UTF-8");
-		mm.setFrom(new InternetAddress(this.user));
-		mm.setText("", "UTF-8");
-		
-		for (String s : to) {
-			mm.addRecipient(MimeMessage.RecipientType.TO, new InternetAddress(s, false));
+	public void disable() {
+		synchronized (this.isEnabled) {
+			if (this.isEnabled) {
+				this.isEnabled = false;
+			}
 		}
+	}
+	
+	public void enable(String server, String protocol, final String user, final String password) {
+		synchronized (this.isEnabled) {
+			if (!this.isEnabled) {
+				this.isEnabled = true;
+			}
+			this.props = System.getProperties();
+			this.user = user;
+			this.password = password;
+			
+			this.props.put("mail.smtp.host", server);
+			//this.props.put("mail.smtp.timeout", TIMEOUT);
+			switch (protocol.toUpperCase()) {
+				case "SSL":
+					this.props.put("mail.smtp.port", "465");
+					this.props.put("mail.smtp.socketFactory.port", "465");
+					this.props.put("mail.smtp.socketFactory.class", "javax.net.ssl.SSLSocketFactory");
+					this.props.put("mail.smtp.auth", "true");
+					this.auth = true;
+					
+					break;
+				case "TLS":
+					this.props.put("mail.smtp.port", "587");
+					this.props.put("mail.smtp.starttls.enable", "true");
+					this.props.put("mail.smtp.auth", "true");
+					
+					this.auth = true;
+					
+					break;
+				default:
+					this.auth = false;
+			}
+		}
+	}
+	
+	synchronized public void send(String title, String... to) throws MessagingException {
+		synchronized (this.isEnabled) {
+			if (!this.isEnabled) {
+				return;
+			}
 		
-		this.queue.offer(mm);
+			MimeMessage mm = new MimeMessage(Session.getInstance(this.props, this.auth? this: null));
+			
+			mm.addHeader("Content-type", "text/HTML; charset=UTF-8");
+			mm.addHeader("format", "flowed");
+			mm.addHeader("Content-Transfer-Encoding", "8bit");
+			
+			mm.setSentDate(new Date());
+			
+			mm.setSubject(title, "UTF-8");
+			mm.setFrom(new InternetAddress(this.user));
+			mm.setText("", "UTF-8");
+			
+			for (String s : to) {
+				mm.addRecipient(MimeMessage.RecipientType.TO, new InternetAddress(s, false));
+			}
+			
+			this.queue.offer(mm);
+		}
 	}
 	
 	@Override

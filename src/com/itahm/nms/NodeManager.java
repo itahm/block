@@ -38,12 +38,13 @@ public class NodeManager extends Snmp implements Listener, Closeable {
 	
 	private final NodeEventReceivable agent;
 	private final Map<Long, Node> nodeMap = new ConcurrentHashMap<>();
+	private final int nodeLimitCount;
 	private Boolean isClosed = false;
 	private long interval;
 	private int retry;
 	private int timeout;
 	
-	public NodeManager(NodeEventReceivable agent, long interval, int timeout, int retry) throws IOException {
+	public NodeManager(NodeEventReceivable agent, long interval, int timeout, int retry, int limit) throws IOException {
 		super(new DefaultUdpTransportMapping());
 		
 		this.agent = agent;
@@ -51,6 +52,7 @@ public class NodeManager extends Snmp implements Listener, Closeable {
 		this.interval = interval;
 		this.retry = retry;
 		this.timeout = timeout;
+		nodeLimitCount = limit;
 		
 		SecurityModels.getInstance()
 			.addSecurityModel(new USM(SecurityProtocols.getInstance(), new OctetString(MPv3.createLocalEngineID()), 0));
@@ -83,16 +85,44 @@ public class NodeManager extends Snmp implements Listener, Closeable {
 		}
 	}
 	
-	public void removeUSMUser(String user) {
-		super.getUSM().removeAllUsers(new OctetString(user));
+	@Override
+	public void close() throws IOException {
+		synchronized(this.isClosed) {
+			if (this.isClosed) {
+				return;
+			}
+		
+			System.out.println("Request stop NodeManager.");
+			
+			for (Iterator<Long> it = this.nodeMap.keySet().iterator(); it.hasNext(); ) {
+				this.nodeMap.get(it.next()).close(true);
+				
+				it.remove();
+				
+				System.out.print("-");
+			}
+			
+			System.out.println();
+			
+			super.close();
+		}
+		
+		System.out.println(KR.CONSOLE_NODEMANAGER_DOWN);
 	}
 	
-	public void removeNode(long id) {
-		Node node = this.nodeMap.remove(id);
-		
-		if (node != null) {
-			node.close();
+	private void createNode(long id, Node node) {
+		if (this.nodeLimitCount > 0 && this.nodeMap.size() >= this.nodeLimitCount) {
+			return;
 		}
+		
+		this.nodeMap.put(id, node);
+		
+		node.addEventListener(this);
+		
+		node.setRetry(this.retry);
+		node.setTimeout(this.timeout);
+		
+		node.ping(0);
 	}
 	
 	/**
@@ -140,17 +170,6 @@ public class NodeManager extends Snmp implements Listener, Closeable {
 		}
 	}
 	
-	private void createNode(long id, Node node) {
-		this.nodeMap.put(id, node);
-		
-		node.addEventListener(this);
-		
-		node.setRetry(this.retry);
-		node.setTimeout(this.timeout);
-		
-		node.ping(0);
-	}
-	
 	@Override
 	public void onEvent(Object caller, Object... args) {
 		if (caller instanceof Node) {
@@ -183,6 +202,10 @@ public class NodeManager extends Snmp implements Listener, Closeable {
 		node.ping(rtt > -1? this.interval: 0);
 	}
 	
+	private void onResourceEvent(Node node, OID oid, OID index, Variable variable) {
+		this.agent.informResourceEvent(node.id, oid, index, variable);
+	}
+
 	private void onSNMPEvent(Node node, Object code) {
 		if (code instanceof Exception) {
 			((Exception)code).printStackTrace();
@@ -191,8 +214,16 @@ public class NodeManager extends Snmp implements Listener, Closeable {
 		}
 	}
 	
-	private void onResourceEvent(Node node, OID oid, OID index, Variable variable) {
-		this.agent.informResourceEvent(node.id, oid, index, variable);
+	public void removeNode(long id) {
+		Node node = this.nodeMap.remove(id);
+		
+		if (node != null) {
+			node.close();
+		}
+	}
+	
+	public void removeUSMUser(String user) {
+		super.getUSM().removeAllUsers(new OctetString(user));
 	}
 	
 	public void setInterval(long l) {
@@ -213,31 +244,6 @@ public class NodeManager extends Snmp implements Listener, Closeable {
 		for (long id : this.nodeMap.keySet()) {
 			this.nodeMap.get(id).setTimeout(i);
 		}
-	}
-	
-	@Override
-	public void close() throws IOException {
-		synchronized(this.isClosed) {
-			if (this.isClosed) {
-				return;
-			}
-		
-			System.out.println("Request stop NodeManager.");
-			
-			for (Iterator<Long> it = this.nodeMap.keySet().iterator(); it.hasNext(); ) {
-				this.nodeMap.get(it.next()).close(true);
-				
-				it.remove();
-				
-				System.out.print("-");
-			}
-			
-			System.out.println();
-			
-			super.close();
-		}
-		
-		System.out.println(KR.CONSOLE_NODEMANAGER_DOWN);
 	}
 	
 	public void testNode(long id, String ip, String protocol, Arguments... args) {

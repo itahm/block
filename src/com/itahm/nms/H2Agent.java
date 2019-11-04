@@ -20,7 +20,6 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import org.h2.jdbcx.JdbcConnectionPool;
 import org.snmp4j.mp.SnmpConstants;
-import org.snmp4j.smi.Gauge32;
 import org.snmp4j.smi.Integer32;
 import org.snmp4j.smi.OID;
 import org.snmp4j.smi.OctetString;
@@ -44,19 +43,18 @@ import com.itahm.nms.parser.IFOutErrors;
 import com.itahm.nms.parser.IFOutOctets;
 import com.itahm.nms.parser.Parseable;
 import com.itahm.nms.parser.ResponseTime;
-import com.itahm.smtp.SMTP;
-import com.itahm.util.Listenable;
 import com.itahm.util.Listener;
 import com.itahm.util.Network;
 import com.itahm.util.Util;
 
-public class H2Agent implements Commander, NodeEventReceivable, Listener, Listenable, Closeable {
+public class H2Agent implements Commander, NodeEventReceivable, Listener, Closeable {
 	private final String RATE_SUFFIX = "_RATE";
 	
 	private Boolean isClosed = false;
 	private Long nextNodeID = Long.valueOf(1);
 	private Long nextLinkID = Long.valueOf(1);
 	private Long nextEventID = Long.valueOf(1);
+	private final Listener nms;
 	private final ArrayList<Listener> listenerList = new ArrayList<>();
 	private final Map<Long, Boolean> statusMap = new HashMap<>();
 	private final Map<Long, Integer> snmpMap = new HashMap<>();
@@ -140,11 +138,12 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Listen
 		ruleMap.put("1.3.6.1.4.1.49447.3.5", new Rule("1.3.6.1.4.1.49447.3.5", "bandwidth", "INTEGER", true, false));
 	}
 	
-	public H2Agent (Path path) throws Exception {
+	public H2Agent (Listener listener, Path path, int limit) throws Exception {
 		System.out.println("Commander ***Agent v1.0***");
 		
 		System.out.format("Directory: %s\n", path.toString());
 		
+		nms = listener;
 		root = path;
 		
 		connPool = JdbcConnectionPool.create(String.format("jdbc:h2:%s", path.resolve("nms").toString()), "sa", "");
@@ -155,7 +154,9 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Listen
 		
 		batch.schedule(config.saveInterval);
 		
-		nodeManager = new NodeManager(this, config.requestInterval, config.timeout, config.retry);
+		nodeManager = new NodeManager(this, config.requestInterval, config.timeout, config.retry, limit);
+		
+		start();
 		
 		System.out.println("Agent start.");
 	}
@@ -182,7 +183,6 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Listen
 	private void initDB() throws SQLException {
 		long start = System.currentTimeMillis();
 		
-		//try (Connection c = DriverManager.getConnection(String.format("jdbc:h2:%s", this.root), "sa", "")) {
 		try (Connection c = connPool.getConnection()) {
 			c.setAutoCommit(false);
 			try {				
@@ -513,33 +513,6 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Listen
 			}
 		}
 	}
-	
-	@Override
-	public void fireEvent(Object... args) {
-		for (Listener listener: this.listenerList) {
-			listener.onEvent(this, args);
-		}
-	}
-
-	@Override
-	public boolean addAccount(String username, JSONObject account) {
-		try(Connection c = this.connPool.getConnection()) {
-			try (PreparedStatement pstmt = c.prepareStatement("INSERT INTO account (username, password, level)"+
-				" VALUES (?, ?, ?);")) {
-				pstmt.setString(1, account.getString("username"));
-				pstmt.setString(2, account.getString("password"));
-				pstmt.setInt(3, account.getInt("level"));
-				
-				pstmt.executeUpdate();
-			}
-			
-			return true;
-		} catch (SQLException sqle) {
-			sqle.printStackTrace();
-		}
-		
-		return false;
-	}
 
 	@Override
 	public void addEventListener(Listener listener) {
@@ -599,7 +572,9 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Listen
 	public JSONObject addNode(JSONObject node) {
 		try (Connection c = this.connPool.getConnection()) {
 			synchronized(this.nextNodeID) {		
-				try (PreparedStatement pstmt = c.prepareStatement("INSERT INTO node (id, name, type, ip, label, extra) values (?, ?, ?, ?, ?, ?);")) {
+				try (PreparedStatement pstmt = c.prepareStatement("INSERT INTO node"+
+					" (id, name, type, ip, label, extra)"+
+					" values (?, ?, ?, ?, ?, ?);")) {
 					pstmt.setLong(1, this.nextNodeID);
 					
 					if (node.has("name")) {
@@ -720,52 +695,6 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Listen
 		}
 		
 		return false;
-	}
-
-	@Override
-	public JSONObject getAccount() {
-		try (Connection c = this.connPool.getConnection()) {
-			try (Statement stmt = c.createStatement()) {
-				JSONObject accountData = new JSONObject();
-				
-				try (ResultSet rs = stmt.executeQuery("SELECT username, password, level FROM account;")) {
-					while (rs.next()) {
-						accountData.put(rs.getString(1), new JSONObject()
-							.put("username", rs.getString(1))
-							.put("password", rs.getString(2))
-							.put("level", rs.getInt(3)));
-					}
-				}
-				
-				return accountData;
-			}
-		} catch (SQLException sqle) {
-			sqle.printStackTrace();
-		}
-		
-		return null;
-	}
-	
-	@Override
-	public JSONObject getAccount(String username) {
-		try (Connection c = this.connPool.getConnection()) {
-			try (PreparedStatement pstmt = c.prepareStatement("SELECT username, password, level FROM account WHERE username=?;")) {
-				pstmt.setString(1, username);
-				
-				try (ResultSet rs = pstmt.executeQuery()) {
-					if (rs.next()) {
-						return new JSONObject()
-							.put("username", rs.getString(1))
-							.put("password", rs.getString(2))
-							.put("level", rs.getInt(3));
-					}
-				}
-			}
-		} catch (SQLException sqle) {
-			sqle.printStackTrace();
-		}
-		
-		return null;
 	}
 
 	@Override
@@ -1581,6 +1510,12 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Listen
 		return null;
 	}
 	
+	@Override
+	public void informLimitEvent(int limit) {
+		
+	}
+	
+	@Override
 	public void informPingEvent(long id, long rtt, String protocol) {
 		Boolean oldStatus = this.statusMap.get(id);
 		boolean status = rtt > -1;
@@ -1657,6 +1592,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Listen
 		}
 	}
 	
+	@Override
 	public void informSNMPEvent(long id, int code) {
 		Integer oldCode = this.snmpMap.get(id);
 		Map<String, Map<String, Value>> indexMap = this.resourceMap.get(id);
@@ -1696,7 +1632,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Listen
 									Integer load = ((HRProcessorLoad)parser).getLoad(id);
 									
 									if (load != null) {
-										this.informResourceEvent(id, new OID("1.3.6.1.2.1.25.3.3.1.2"), new OID("0"), new Integer32(load));
+										informResourceEvent(id, new OID("1.3.6.1.2.1.25.3.3.1.2"), new OID("0"), new Integer32(load));
 									}
 								}
 							}
@@ -1736,6 +1672,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Listen
 		}
 	}
 	
+	@Override
 	public void informResourceEvent(long id, OID requestOID, OID indexOID, Variable variable) {
 		Calendar calendar = Calendar.getInstance();
 		String
@@ -1752,12 +1689,6 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Listen
 			case "1.3.6.1.4.1.6296.9.1.1.1.8" :
 			case "1.3.6.1.4.1.37288.1.1.3.1.1" :
 				oid = "1.3.6.1.2.1.25.3.3.1.2";
-				
-				break;
-			case "1.3.6.1.2.1.31.1.1.1.15":
-				oid = "1.3.6.1.2.1.2.2.1.5";
-				
-				variable = new Gauge32(((Gauge32)variable).getValue() *1000000);
 				
 				break;
 			case "1.3.6.1.2.1.31.1.1.1.6":
@@ -1925,11 +1856,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Listen
 
 	@Override
 	public void onEvent(Object caller, Object ...event) {
-		if (caller instanceof SMTP) {
-			// event = exception
-			// SMTP 오류. + ((Exception)event).getMessage()
-		}
-		else if (caller instanceof SmartSearch) {
+		if (caller instanceof SmartSearch) {
 			onSearchEvent((String)event[0], (String)event[1]);
 		}
 	}
@@ -2082,41 +2009,6 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Listen
 			return true;
 		} catch (Exception e) {
 			e.printStackTrace();
-		}
-		
-		return false;
-	}
-	
-	@Override
-	public boolean removeAccount(String username) {
-		try (Connection c = this.connPool.getConnection()) {
-			c.setAutoCommit(false);
-			
-			try {
-				try (PreparedStatement pstmt = c.prepareStatement("DELETE FROM account WHERE username=?;")) {
-					pstmt.setString(1, username);
-					
-					pstmt.executeUpdate();
-				}
-				
-				try (Statement stmt = c.createStatement()) {
-					try (ResultSet rs = stmt.executeQuery("SELECT username FROM account WHERE level=0;")) {
-						if (!rs.next()) {
-							throw new SQLException();
-						}
-					}
-				}
-				
-				c.commit();
-				
-				return true;
-			} catch (SQLException sqle) {
-				c.rollback();
-				
-				throw sqle;
-			}
-		} catch (SQLException sqle) {
-			sqle.printStackTrace();
 		}
 		
 		return false;
@@ -2341,6 +2233,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Listen
 		
 		return false;
 	}
+	
 	@Override
 	public void sendEvent (Event event) {
 		try(Connection c = this.connPool.getConnection()) {
@@ -2398,7 +2291,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Listen
 				pstmt.executeUpdate();
 			}
 			
-			fireEvent(new JSONObject()
+			nms.onEvent(this, new JSONObject()
 				.put("origin", event.origin)
 				.put("id", event.id)
 				.put("level", event.level)
@@ -2408,43 +2301,6 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Listen
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
 		}
-	}
-	
-	@Override
-	public boolean setAccount(String username, JSONObject account) {
-		try (Connection c = this.connPool.getConnection()) {
-			c.setAutoCommit(false);
-			
-			try {
-				try (PreparedStatement pstmt = c.prepareStatement("UPDATE account SET password=?, level=? WHERE username=?;")) {
-					pstmt.setString(1, account.getString("password"));
-					pstmt.setInt(2, account.getInt("level"));
-					pstmt.setString(3, account.getString("username"));
-					
-					pstmt.executeUpdate();
-				}
-				
-				try (Statement stmt = c.createStatement()) {
-					try (ResultSet rs = stmt.executeQuery("SELECT username FROM account WHERE level=0;")) {
-						if (!rs.next()) {
-							throw new SQLException();
-						}
-					}
-				}
-				
-				c.commit();
-				
-				return true;
-			} catch (SQLException sqle) {
-				c.rollback();
-				
-				throw sqle;
-			}
-		} catch (SQLException sqle) {
-			sqle.printStackTrace();
-		}
-		
-		return false;
 	}
 
 	@Override
@@ -2977,8 +2833,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Listen
 		return false;
 	}
 	
-	@Override
-	public void start() throws Exception {
+	private void start() throws Exception {
 		try(Connection c = this.connPool.getConnection()) {
 			try (Statement stmt = c.createStatement()) {
 				try (ResultSet rs = stmt.executeQuery("SELECT security, level, auth_protocol, auth_key, priv_protocol, priv_key FROM profile WHERE version='v3';")) {
@@ -2992,7 +2847,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Listen
 				try (ResultSet rs = stmt.executeQuery("SELECT id, ip, m.protocol, port, version, security, level, status, snmp"+
 					" FROM monitor AS m LEFT JOIN profile AS p ON m.protocol = p.name;")) {
 					long id;
-					
+					try {
 					while (rs.next()) {
 						System.out.print("!");
 					
@@ -3012,7 +2867,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Listen
 						
 						this.statusMap.put(id, rs.getBoolean(8));
 					}
-					
+					} catch (Exception e) {e.printStackTrace();}
 					System.out.println();
 				}
 			}

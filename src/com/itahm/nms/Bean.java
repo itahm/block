@@ -78,6 +78,7 @@ public class Bean {
 		public static final String SYSTEM = "system";
 		public static final String CHANGE = "change";
 		
+		public static final int SHUTDOWN = -1;
 		public static final int NORMAL = 0;
 		public static final int WARNING = 1;
 		public static final int ERROR = 2;

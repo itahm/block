@@ -8,7 +8,6 @@ import com.itahm.nms.Bean.Event;
 import com.itahm.util.Listener;
 
 public interface Commander extends Closeable {
-	public boolean addAccount(String username, JSONObject account);
 	public void addEventListener(Listener listener);
 	public JSONObject addIcon(String type, JSONObject icon);
 	public boolean addLink(long nodeFrom, long nodeTo);
@@ -16,8 +15,6 @@ public interface Commander extends Closeable {
 	public boolean addPath(long nodeFrom, long nodeTo);
 	public boolean addProfile(String name, JSONObject profile);
 	public boolean addUser(String name, JSONObject user);
-	public JSONObject getAccount(String username);
-	public JSONObject getAccount();
 	public JSONObject getConfig();
 	public JSONObject getCritical(long id, String index, String oid);
 	public JSONObject getEvent(long eventID);
@@ -42,7 +39,6 @@ public interface Commander extends Closeable {
 	public JSONObject getUser();
 	public JSONObject getUser(String name);
 	public void sendEvent (Event event);
-	public boolean setAccount(String username, JSONObject account);
 	public boolean setCritical(long id, String index, String oid, int critical);
 	public boolean setIcon(String id, JSONObject icon);
 	public boolean setLink(long nodeFrom, long nodeTo, JSONObject link);
@@ -59,8 +55,6 @@ public interface Commander extends Closeable {
 	public boolean setStoreDate(int period);
 	public boolean setTimeout(int timeout);
 	public boolean setUser(String id, JSONObject user);
-	public void start() throws Exception;
-	public boolean removeAccount(String username);
 	public void removeEventListener(Listener listener);
 	public boolean removeIcon(String type);
 	public boolean removeLink(long id);

@@ -13,7 +13,7 @@ import java.util.HashMap;
 import java.util.List;
 
 public class IFOutOctets implements Parseable {
-	private final Map<Long, Map<Integer, Value>> tmpMap = new HashMap<>();
+	private final Map<Long, Map<Integer, Value>> oldMap = new HashMap<>();
 	private final Map<Long, Max> publicMax = new HashMap<>();
 	private final Map<Long, Max> max = new HashMap<>();
 	private final Map<Long, Max> publicMaxRate = new HashMap<>();
@@ -23,14 +23,16 @@ public class IFOutOctets implements Parseable {
 	public CriticalEvent parse(long id, String idx, Map<String, Value> oidMap) {
 		long speed = 0;
 		Value v;
-		Map<Integer, Value> tmpIndexMap = this.tmpMap.get(id);
+		Map<Integer, Value> oldIndexMap = this.oldMap.get(id);
 		
-		if (tmpIndexMap == null) {
-			this.tmpMap.put(id, tmpIndexMap = new HashMap<Integer, Value>());
+		if (oldIndexMap == null) {
+			this.oldMap.put(id, oldIndexMap = new HashMap<Integer, Value>());
 		}
 		
 		if ((v = oidMap.get("1.3.6.1.4.1.49447.3.5")) != null) {
 			speed = Long.valueOf(v.value);
+		} else if ((v = oidMap.get("1.3.6.1.2.1.31.1.1.1.15")) != null) {
+			speed = Long.valueOf(v.value) *1000000L;
 		} else if ((v = oidMap.get("1.3.6.1.2.1.2.2.1.5")) != null) {
 			speed = Long.valueOf(v.value);
 		}
@@ -40,9 +42,9 @@ public class IFOutOctets implements Parseable {
 			
 			if (v != null) {
 				int index = Integer.valueOf(idx);
-				Long bps = parseBPS(id, tmpIndexMap.get(index), speed, Long.valueOf(v.value), v.timestamp);
+				Long bps = parseBPS(id, oldIndexMap.get(index), speed, Long.valueOf(v.value), v.timestamp);
 				
-				tmpIndexMap.put(index, new Value(v.timestamp, v.value));
+				oldIndexMap.put(index, new Value(v.timestamp, v.value));
 				
 				if (bps != null) {
 					Max max = this.max.get(id);

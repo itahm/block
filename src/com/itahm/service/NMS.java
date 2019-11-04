@@ -6,83 +6,165 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Date;
+import java.util.Timer;
+import java.util.TimerTask;
 
 import javax.mail.MessagingException;
 
+import com.itahm.http.Request;
 import com.itahm.http.Response;
-import com.itahm.json.JSONArray;
 import com.itahm.json.JSONException;
 import com.itahm.json.JSONObject;
 import com.itahm.lang.KR;
+import com.itahm.nms.Bean.Event;
 import com.itahm.nms.Commander;
 import com.itahm.nms.H2Agent;
-import com.itahm.nms.Bean.Event;
 import com.itahm.smtp.SMTP;
 import com.itahm.util.Listener;
+import com.itahm.util.Util;
 
 public class NMS implements Serviceable, Listener {
 
-	private final static String VERSION = "ITAhM v3.0"/*"CeMS v1.0"*/;
-	private byte [] event = null;
+	private final static String VERSION = "CeMS v1.0";
 	private Commander agent;
-	private SMTP smtp;
+	private final SMTP smtpServer = new SMTP();
 	private final Path root;
+	private final long expire;
+	private final int limit;
+	private Boolean isClosed = true;
+	private byte [] event = null;
 	
-	public NMS(Path root) throws Exception {
-		this.root = root;
-	}
-	
-	private void setSMTP(JSONObject config) {
-		if (config == null) {
-			this.smtp = null;
-		} else {
-			this.smtp = new SMTP(config.getString("smtpServer"),
-				config.getString("smtpProtocol"),
-				config.getString("smtpUser"),
-				config.getString("smtpPassword"));
-		}
-	}
-	
-	@Override
-	synchronized public void stop() {
-		if (this.agent == null) {
-			return;
-		}
+	public NMS(Builder builder) throws Exception {
+		root = builder.root;
+		expire = builder.expire;
+		limit = builder.limit;
 		
-		setSMTP(null);
-		
-		try {
-			this.agent.close();
-		} catch (IOException ioe) {
-			ioe.printStackTrace();
-		}
-		
-		this.agent = null;
-	}
+		if (expire > 0) {
+			new Timer("Expire Scheduler").schedule(new TimerTask() {
 
-	@Override
-	synchronized public void start() {
-		try {
-			this.agent = new H2Agent(root);
+				@Override
+				public void run() {
+					try {
+						// TODO
+						System.out.println(KR.ERROR_LICENSE_EXPIRE);
+						
+						agent.close();
+					} catch (IOException ioe) {
+						ioe.printStackTrace();
+					}
+					
+				}}, new Date(expire));
+		}
+	}
+	
+	public static class Builder {
+		private final Path root;
+		private boolean licensed = true;
+		private long expire = 0;
+		private int limit = 0;
 		
-			JSONObject config = this.agent.getConfig();
-			
-			if (config.has("smtpEnable") && config.getBoolean("smtpEnable")) {
-				setSMTP(config);
+		public Builder (Path root) {
+			this.root = root;
+		}
+		
+		public Builder license(String mac) {
+			if (!Util.isValidAddress(mac)) {
+				System.out.println(KR.ERROR_LICENSE_MAC);
+				
+				licensed = false;
 			}
 			
-			this.agent.addEventListener(this);
+			return this;
+		}
+		
+		public Builder expire(long expire) {
+			this.expire = expire;
 			
-			this.agent.start();
-		} catch (Exception e) {
-			e.printStackTrace();
+			return this;
+		}
+		
+		public Builder limit(int limit) {
+			this.limit = limit;
+			
+			return this;
+		}
+		
+		public NMS build() throws Exception {
+			if (!this.licensed) {
+				return null;
+			}
+			
+			return new NMS(this);
+		}
+	}
+	
+
+	@Override
+	public void start() {
+		synchronized(this.isClosed) {
+			if (!this.isClosed) {
+				return;
+			}
+			
+			try {
+				this.agent = new H2Agent(this, root, limit);
+			
+				JSONObject config = this.agent.getConfig();
+				
+				if (config.has("smtpEnable") && config.getBoolean("smtpEnable")) {
+					this.smtpServer.enable(config.getString("smtpServer"),
+						config.getString("smtpProtocol"),
+						config.getString("smtpUser"),
+						config.getString("smtpPassword"));
+				}
+				
+				this.isClosed = false;
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+		}
+	}
+	
+	@Override
+	public void stop() {
+		synchronized(this.isClosed) {
+			if (this.isClosed) {
+				return;
+			}
+			
+			synchronized(this) {
+				try {
+					this.event = new JSONObject()
+						.put("origin", Event.SYSTEM)
+						.put("level", Event.SHUTDOWN)
+						.toString().getBytes(StandardCharsets.UTF_8.name());
+					
+					notifyAll();
+				} catch (UnsupportedEncodingException uee) {
+					uee.printStackTrace();
+				}
+			}
+			try {
+				this.agent.close();
+			} catch (IOException ioe) {
+				ioe.printStackTrace();
+			}
+			
+			this.isClosed = true;
 		}
 	}
 
 	@Override
-	synchronized public boolean service(JSONObject request, Response response) {
-		String command = request.getString("command").toUpperCase();
+	public boolean service(Request request, Response response, JSONObject data) {
+		synchronized(this.isClosed) {
+			if (this.isClosed) {
+				return false;
+			}
+		}
 		
+		String command = data.getString("command").toUpperCase();
+			
 		if (this.agent == null) {
 			response.setStatus(Response.Status.UNAVAILABLE);
 			
@@ -94,8 +176,8 @@ public class NMS implements Serviceable, Listener {
 			case "LISTEN":
 					JSONObject event = null;
 					
-					if (request.has("eventID")) {
-						event = this.agent.getEvent(request.getLong("eventID"));
+					if (data.has("eventID")) {
+						event = this.agent.getEvent(data.getLong("eventID"));
 					}
 					
 					if (event == null) {
@@ -114,7 +196,7 @@ public class NMS implements Serviceable, Listener {
 				
 				break;
 			default:
-				return parseRequest(command, request, response);
+				return parseRequest(command, data, response);
 			}
 					
 		} catch (JSONException | UnsupportedEncodingException e) {
@@ -123,7 +205,7 @@ public class NMS implements Serviceable, Listener {
 			response.write(new JSONObject().
 				put("error", e.getMessage()).toString());
 		}
-		
+	
 		return true;
 	}
 		
@@ -134,12 +216,6 @@ public class NMS implements Serviceable, Listener {
 		if (caller instanceof Commander) {
 			event = (JSONObject)args[0];
 		}
-		else if (caller instanceof SMTP) {
-			//MimeMessage mm = (MimeMessage)args[0];
-			//MessagingException me = (MessagingException)args[1];
-			
-			this.agent.sendEvent(new Event(Event.SYSTEM, 0, Event.WARNING, KR.WARNING_SMTP_FAIL));
-		}
 		
 		if (event == null) {
 			return;
@@ -147,37 +223,37 @@ public class NMS implements Serviceable, Listener {
 		
 		synchronized(this) {
 			try {
-				if (this.smtp != null) {
-					ArrayList<String> list = new ArrayList<>();
-					JSONObject
-						userData = this.agent.getUser(),
-						user;
+				ArrayList<String> list = new ArrayList<>();
+				JSONObject
+					userData = this.agent.getUser(),
+					user;
+				
+				for (Object name : userData.keySet()) {
+					user = userData.getJSONObject((String)name);
 					
-					for (Object name : userData.keySet()) {
-						user = userData.getJSONObject((String)name);
-						
-						if (user.has("email")) {
-							list.add(user.getString("email"));
-						}
+					if (user.has("email")) {
+						list.add(user.getString("email"));
 					}
+				}
+				
+				if (list.size() > 0) {
+					String [] sa = new String [list.size()];
 					
-					if (list.size() > 0) {
-						String [] sa = new String [list.size()];
-						
-						list.toArray(sa);
-						
-						try {
-							this.smtp.send(event.getString("message"), sa);
-						} catch (MessagingException me) {
-							me.printStackTrace();
-						}
+					list.toArray(sa);
+					
+					try {
+						this.smtpServer.send(event.getString("message"), sa);
+					} catch (MessagingException me) {
+						me.printStackTrace();
 					}
 				}
 				
 				this.event = event.toString().getBytes(StandardCharsets.UTF_8.name());
 				
 				notifyAll();
-			} catch (UnsupportedEncodingException uee) {}
+			} catch (UnsupportedEncodingException uee) {
+				uee.printStackTrace();
+			}
 		}
 	}
 
@@ -226,12 +302,6 @@ public class NMS implements Serviceable, Listener {
 	
 	private void add(JSONObject request, Response response) {
 		switch(request.getString("target").toUpperCase()) {
-		case "ACCOUNT":
-			if (!this.agent.addAccount(request.getString("username"), request.getJSONObject("account"))) {
-				response.setStatus(Response.Status.CONFLICT);
-			}
-			
-			break;
 		case "ICON":
 			if (this.agent.addIcon(request.getString("type"), request.getJSONObject("icon")) == null) {
 				response.setStatus(Response.Status.CONFLICT);
@@ -281,12 +351,6 @@ public class NMS implements Serviceable, Listener {
 	
 	private void set(JSONObject request, Response response) {
 		switch(request.getString("target").toUpperCase()) {
-		case "ACCOUNT":
-			if (!this.agent.setAccount(request.getString("username"), request.getJSONObject("account"))) {
-				response.setStatus(Response.Status.CONFLICT);
-			}
-			
-			break;
 		case "CONFIG":
 			switch (request.getString("key")) {
 			case "retry": 
@@ -314,27 +378,28 @@ public class NMS implements Serviceable, Listener {
 				
 				break;
 			case "smtpServer":
-				if (this.smtp != null) {
-					try {
-						this.smtp.close();
-					} catch (IOException ioe) {
-						ioe.printStackTrace();
-					}
-					
-					this.smtp = null;
-				}
-				
 				if (!request.has("value")) {
-					this.agent.setSMTP(null);
-				} else if (this.agent.setSMTP(request.getJSONObject("value"))) {
-					JSONObject config = this.agent.getConfig();
+					if (this.agent.setSMTP(null)) {
+						this.smtpServer.disable();	
+					} else {
+						response.setStatus(Response.Status.SERVERERROR);
+					}
+				} else {
+					JSONObject smtp = request.getJSONObject("value");
 					
-					setSMTP(config);
-					
-					try {
-						this.smtp.send(KR.INFO_SMTP_INIT, config.getString("smtpUser"));
-					} catch (MessagingException me) {
-						response.setStatus(Response.Status.NOTIMPLEMENTED);
+					if (this.agent.setSMTP(smtp)) {
+						this.smtpServer.enable(smtp.getString("smtpServer"),
+							smtp.getString("smtpProtocol"),
+							smtp.getString("smtpUser"),
+							smtp.getString("smtpPassword"));
+						
+						try {
+							this.smtpServer.send(KR.INFO_SMTP_INIT, smtp.getString("smtpUser"));
+						} catch (MessagingException me) {
+							response.setStatus(Response.Status.NOTIMPLEMENTED);
+						}
+					} else {
+						response.setStatus(Response.Status.SERVERERROR);
 					}
 				}
 				
@@ -432,12 +497,6 @@ public class NMS implements Serviceable, Listener {
 	
 	private void remove(JSONObject request, Response response) {
 		switch(request.getString("target").toUpperCase()) {
-		case "ACCOUNT":
-			if(!this.agent.removeAccount(request.getString("username"))) {
-				response.setStatus(Response.Status.CONFLICT);
-			}
-			
-			break;
 		case "ICON":
 			if (!this.agent.removeIcon(request.getString("type"))) {
 				response.setStatus(Response.Status.CONFLICT);
@@ -481,39 +540,20 @@ public class NMS implements Serviceable, Listener {
 	}
 	
 	private void get(JSONObject request, Response response) {
-		Object target = request.get("target");
+		String target = request.getString("target");
 		
-		if (target instanceof JSONArray) {
-			JSONArray targets = (JSONArray)target;
-			JSONObject result = new JSONObject();
-			
-			for (int i=0, _i=targets.length(); i<_i; i++) {
-				result.put(targets.getString(i), get(targets.getString(i), request));
-			}
-			
-			response.write(result.toString());
-		}
-		else if (target instanceof String){
-			JSONObject result = get((String)target, request);
-			
-			if (result == null) {
-				response.setStatus(Response.Status.NOCONTENT);
-			}
-			else {
-				response.write(result.toString());
-			}
+		JSONObject result = get((String)target, request);
+		
+		if (result == null) {
+			response.setStatus(Response.Status.NOCONTENT);
 		}
 		else {
-			throw new JSONException("Target is not valid.");
+			response.write(result.toString());
 		}
 	}
 	
 	private JSONObject get(String target, JSONObject request) {
 		switch(target.toUpperCase()) {
-		case "ACCOUNT":
-			return request.has("username")?
-				this.agent.getAccount(request.getString("username")):
-				this.agent.getAccount();
 		case "CONFIG":
 			return this.agent.getConfig();
 		case "CRITICAL":
@@ -530,7 +570,7 @@ public class NMS implements Serviceable, Listener {
 			result
 				.put("version", VERSION)
 				.put("java", System.getProperty("java.version"))
-				//.put("expire", this.expire)
+				.put("expire", this.expire)
 				.put("path", this.root.toString());
 			try {
 				result.put("space", Files.getFileStore(this.root).getUsableSpace());
@@ -576,6 +616,13 @@ public class NMS implements Serviceable, Listener {
 		default:
 			
 			throw new JSONException("Target is not found.");
+		}
+	}
+	
+	@Override
+	public boolean isRunning() {
+		synchronized(this.isClosed) {
+			return !this.isClosed;
 		}
 	}
 }
