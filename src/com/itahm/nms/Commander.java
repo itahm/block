@@ -5,16 +5,15 @@ import java.io.Closeable;
 import com.itahm.json.JSONArray;
 import com.itahm.json.JSONObject;
 import com.itahm.nms.Bean.Event;
-import com.itahm.util.Listener;
 
 public interface Commander extends Closeable {
-	public void addEventListener(Listener listener);
 	public JSONObject addIcon(String type, JSONObject icon);
 	public boolean addLink(long nodeFrom, long nodeTo);
 	public JSONObject addNode(JSONObject node);
 	public boolean addPath(long nodeFrom, long nodeTo);
 	public boolean addProfile(String name, JSONObject profile);
 	public boolean addUser(String name, JSONObject user);
+	public void backup() throws Exception;
 	public JSONObject getConfig();
 	public JSONObject getCritical(long id, String index, String oid);
 	public JSONObject getEvent(long eventID);
@@ -55,7 +54,7 @@ public interface Commander extends Closeable {
 	public boolean setStoreDate(int period);
 	public boolean setTimeout(int timeout);
 	public boolean setUser(String id, JSONObject user);
-	public void removeEventListener(Listener listener);
+	public void start();
 	public boolean removeIcon(String type);
 	public boolean removeLink(long id);
 	public boolean removeNode(long id);
@@ -63,5 +62,5 @@ public interface Commander extends Closeable {
 	public boolean removeProfile(String name);
 	public boolean removeResource(long id, String index, String oid);
 	public boolean removeUser(String name);
-	public boolean search(String network, int mask);
+	public boolean search(String network, int mask, String profile);
 }

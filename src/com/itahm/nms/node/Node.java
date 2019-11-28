@@ -86,6 +86,12 @@ abstract public class Node implements Runnable, Closeable, Listenable {
 
 	@Override
 	public void fireEvent(Object ...args) {
+		synchronized (this.isClosed) {
+			if (this.isClosed) {
+				return;
+			}
+		}
+		
 		for (Listener listener: this.listenerList) {
 			listener.onEvent(this, args);
 		}
@@ -130,6 +136,8 @@ abstract public class Node implements Runnable, Closeable, Listenable {
 		} catch (InterruptedException ie) {
 			this.thread.interrupt();
 		}
+		
+		fireEvent(Event.CLOSE);
 	}
 	
 	abstract public boolean isReachable() throws IOException;

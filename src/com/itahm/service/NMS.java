@@ -17,7 +17,6 @@ import com.itahm.http.Response;
 import com.itahm.json.JSONException;
 import com.itahm.json.JSONObject;
 import com.itahm.lang.KR;
-import com.itahm.nms.Bean.Event;
 import com.itahm.nms.Commander;
 import com.itahm.nms.H2Agent;
 import com.itahm.smtp.SMTP;
@@ -108,7 +107,7 @@ public class NMS implements Serviceable, Listener {
 			}
 			
 			try {
-				this.agent = new H2Agent(this, root, limit);
+				this.agent = new H2Agent(this, this.root, this.limit);
 			
 				JSONObject config = this.agent.getConfig();
 				
@@ -118,6 +117,8 @@ public class NMS implements Serviceable, Listener {
 						config.getString("smtpUser"),
 						config.getString("smtpPassword"));
 				}
+				
+				this.agent.start();
 				
 				this.isClosed = false;
 			} catch (Exception e) {
@@ -133,18 +134,6 @@ public class NMS implements Serviceable, Listener {
 				return;
 			}
 			
-			synchronized(this) {
-				try {
-					this.event = new JSONObject()
-						.put("origin", Event.SYSTEM)
-						.put("level", Event.SHUTDOWN)
-						.toString().getBytes(StandardCharsets.UTF_8.name());
-					
-					notifyAll();
-				} catch (UnsupportedEncodingException uee) {
-					uee.printStackTrace();
-				}
-			}
 			try {
 				this.agent.close();
 			} catch (IOException ioe) {
@@ -162,14 +151,8 @@ public class NMS implements Serviceable, Listener {
 				return false;
 			}
 		}
-		
+	
 		String command = data.getString("command").toUpperCase();
-			
-		if (this.agent == null) {
-			response.setStatus(Response.Status.UNAVAILABLE);
-			
-			return true;
-		}
 		
 		try {
 			switch (command) {				
@@ -195,10 +178,13 @@ public class NMS implements Serviceable, Listener {
 					}
 				
 				break;
+			case "RESTORE":
+				
+				break;
 			default:
 				return parseRequest(command, data, response);
 			}
-					
+			
 		} catch (JSONException | UnsupportedEncodingException e) {
 			response.setStatus(Response.Status.BADREQUEST);
 			
@@ -264,6 +250,14 @@ public class NMS implements Serviceable, Listener {
 				add(request, response);
 				
 				break;
+			case "BACKUP":
+				if (request.getString("service").equalsIgnoreCase("NMS")) {
+					this.agent.backup();
+				} else {
+					return false;
+				}
+				
+				break;
 			case "ECHO": break;
 			case "GET":
 				get(request, response);
@@ -274,7 +268,10 @@ public class NMS implements Serviceable, Listener {
 				
 				break;
 			case "SEARCH":
-				this.agent.search(request.getString("network"), request.getInt("mask"));
+				this.agent.search(
+					request.getString("network"),
+					request.getInt("mask"),
+					request.has("profile")? request.getString("profile"): null);
 				
 				break;
 			case "SET":
@@ -293,7 +290,7 @@ public class NMS implements Serviceable, Listener {
 		} catch (Exception e) {
 			response.write(new JSONObject().
 				put("error", e.getMessage()).toString());
-			e.printStackTrace();
+			
 			response.setStatus(Response.Status.SERVERERROR);
 		}
 		

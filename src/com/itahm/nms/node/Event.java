@@ -1,5 +1,5 @@
 package com.itahm.nms.node;
 
 public enum Event {
-	PING, SNMP, RESOURCE;
+	PING, SNMP, RESOURCE, CLOSE;
 }

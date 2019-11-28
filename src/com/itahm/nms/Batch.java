@@ -62,6 +62,8 @@ public class Batch extends Timer {
 		
 		synchronized(this.connPool) {
 			this.connPool.dispose();
+			
+			this.connPool = null;
 		}
 		
 		this.nextPool.dispose();
@@ -70,29 +72,19 @@ public class Batch extends Timer {
 	private void createRollingTable() {
 		long start = System.currentTimeMillis();
 		
-		while(true) {
-			try (Connection c = connPool.getConnection()) {
-				try (Statement stmt = c.createStatement()) {
-					stmt.executeUpdate("CREATE TABLE IF NOT EXISTS rolling"+
-						" (id BIGINT NOT NULL"+
-						", oid VARCHAR NOT NULL"+
-						", _index VARCHAR NOT NULL"+
-						", value VARCHAR NOT NULL"+
-						", timestamp BIGINT DEFAULT NULL);");
-				}
-				
-				System.out.format("%s %dms.\n", KR.INFO_NEW_ROLLING, System.currentTimeMillis() - start);
-				
-				break;
-			} catch (SQLException sqle) {
-				sqle.printStackTrace();
+		try (Connection c = connPool.getConnection()) {
+			try (Statement stmt = c.createStatement()) {
+				stmt.executeUpdate("CREATE TABLE IF NOT EXISTS rolling"+
+					" (id BIGINT NOT NULL"+
+					", oid VARCHAR NOT NULL"+
+					", _index VARCHAR NOT NULL"+
+					", value VARCHAR NOT NULL"+
+					", timestamp BIGINT DEFAULT NULL);");
 			}
 			
-			try {
-				Thread.sleep(1000);
-			} catch (InterruptedException e) {
-				break;
-			}
+			System.out.format("New rolling database created in %dms.\n", System.currentTimeMillis() - start);
+		} catch (SQLException sqle) {
+			sqle.printStackTrace();
 		}
 	}
 	
@@ -176,6 +168,10 @@ public class Batch extends Timer {
 		Rule rule;
 		
 		synchronized(this.connPool) {
+			if (this.connPool == null) {
+				return;
+			}
+			
 			try(Connection c = this.connPool.getConnection()) {
 				for (Long id: this.resourceMap.keySet()) {
 					 indexMap = this.resourceMap.get(id);

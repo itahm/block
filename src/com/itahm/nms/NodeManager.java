@@ -22,7 +22,6 @@ import org.snmp4j.smi.OctetString;
 import org.snmp4j.smi.Variable;
 import org.snmp4j.transport.DefaultUdpTransportMapping;
 
-import com.itahm.lang.KR;
 import com.itahm.nms.node.Event;
 import com.itahm.nms.node.ICMPNode;
 import com.itahm.nms.node.Node;
@@ -92,22 +91,28 @@ public class NodeManager extends Snmp implements Listener, Closeable {
 				return;
 			}
 		
+			super.close();
+			
 			System.out.println("Request stop NodeManager.");
 			
+			long count = 0;
+			
 			for (Iterator<Long> it = this.nodeMap.keySet().iterator(); it.hasNext(); ) {
-				this.nodeMap.get(it.next()).close(true);
+				this.nodeMap.get(it.next()).close();
 				
 				it.remove();
 				
 				System.out.print("-");
+				
+				if (++count %20 == 0) {
+					System.out.println();
+				}
 			}
 			
 			System.out.println();
-			
-			super.close();
 		}
 		
-		System.out.println(KR.CONSOLE_NODEMANAGER_DOWN);
+		System.out.println("NodeManager down.");
 	}
 	
 	private void createNode(long id, Node node) {
@@ -172,8 +177,17 @@ public class NodeManager extends Snmp implements Listener, Closeable {
 	
 	@Override
 	public void onEvent(Object caller, Object... args) {
+		synchronized(this.isClosed) {
+			if (this.isClosed) {
+				return;
+			}
+		}
+		
 		if (caller instanceof Node) {
 			switch ((Event)args[0]) {
+			case CLOSE:
+				
+				break;
 			case PING:
 				onPingEvent((Node)caller, (long)args[1]);
 				
@@ -252,10 +266,6 @@ public class NodeManager extends Snmp implements Listener, Closeable {
 		seed.addEventListener(this);
 		
 		switch(protocol.toUpperCase()) {
-		case "SNMP":
-			seed.test(SeedNode.Protocol.SNMP, this, args);
-			
-			break;
 		case "ICMP":
 			seed.test(SeedNode.Protocol.ICMP);
 			
@@ -264,6 +274,8 @@ public class NodeManager extends Snmp implements Listener, Closeable {
 			seed.test(SeedNode.Protocol.TCP);
 			
 			break;
+		default:
+			seed.test(SeedNode.Protocol.SNMP, this, args);
 		}
 	}
 

@@ -10,7 +10,6 @@ public class ICMPNode extends Node {
 	
 	public ICMPNode(long id, String ip) throws UnknownHostException {
 		this(id, ip, String.format("ICMPNode %s", ip));
-		
 	}
 	
 	public ICMPNode(long id, String ip, String name) throws UnknownHostException {

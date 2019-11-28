@@ -1,7 +1,7 @@
 package com.itahm.nms.node;
 
 import java.io.IOException;
-import java.util.ArrayList;
+/*import java.util.ArrayList;*/
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -21,16 +21,16 @@ import org.snmp4j.smi.Variable;
 import org.snmp4j.smi.VariableBinding;
 
 import com.itahm.nms.node.PDUManager;
-import com.itahm.util.Listenable;
-import com.itahm.util.Listener;
+/*import com.itahm.util.Listenable;
+import com.itahm.util.Listener;*/
 
-abstract public class SNMPNode extends ICMPNode implements Listenable {
+abstract public class SNMPNode extends ICMPNode/* implements Listenable*/ {
 
 	private final static long TIMEOUT = 5000L;
 	private final static int RETRY = 2;
 	private final Snmp snmp;
 	protected final Target<UdpAddress> target;
-	private final ArrayList<Listener> listenerList = new ArrayList<>();
+	//private final ArrayList<Listener> listenerList = new ArrayList<>();
 	private final Set<OID> reqList = new HashSet<>();
 	private final Map<OID, OID> reqMap = new HashMap<>();
 	
@@ -43,7 +43,7 @@ abstract public class SNMPNode extends ICMPNode implements Listenable {
 		target.setTimeout(TIMEOUT);
 		target.setRetries(RETRY);
 	}
-	
+	/*
 	@Override
 	public void addEventListener(Listener listener) {
 		this.listenerList.add(listener);
@@ -53,7 +53,7 @@ abstract public class SNMPNode extends ICMPNode implements Listenable {
 	public void removeEventListener(Listener listener) {
 		this.listenerList.remove(listener);
 	}
-	
+	*/
 	@Override
 	public void fireEvent(Object ...event) {
 		if (event[0] instanceof Event && (Event)event[0] == Event.PING) {
@@ -83,20 +83,23 @@ abstract public class SNMPNode extends ICMPNode implements Listenable {
 					
 					try {
 						int code = repeat(this.snmp.send(pdu, this.target));
-						
-						for (Listener listener: this.listenerList) {
+						/*
+						for (Listener listener: super.listenerList) {
 							listener.onEvent(this, Event.SNMP, code);
-						}
+						}*/
+						super.fireEvent(Event.SNMP, code);
 					} catch (Exception e) {
-						for (Listener listener: this.listenerList) {
+						/*for (Listener listener: super.listenerList) {
 							listener.onEvent(this, Event.SNMP, e);
-						}
+						}*/
+						super.fireEvent(Event.SNMP, e);
 					};
 				}
-				
-				for (Listener listener: this.listenerList) {
+				/*
+				for (Listener listener: super.listenerList) {
 					listener.onEvent(this, event);
-				}
+				}*/
+				super.fireEvent(event);
 			}
 		}
 	}
@@ -131,10 +134,11 @@ abstract public class SNMPNode extends ICMPNode implements Listenable {
 					nextRequests.add(new VariableBinding(responseOID));
 					
 					this.reqMap.put(responseOID, initialOID);
-						
+					/*
 					for (Listener listener: this.listenerList) {
 						listener.onEvent(this, Event.RESOURCE, initialOID, responseOID.getSuffix(initialOID), responseVB.getVariable(), requestID);
-					}
+					}*/
+					super.fireEvent(Event.RESOURCE, initialOID, responseOID.getSuffix(initialOID), responseVB.getVariable(), requestID);
 				}
 			}
 			

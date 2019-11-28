@@ -3,6 +3,8 @@ package com.itahm.http;
 import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
 import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.net.SocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 
@@ -201,8 +203,8 @@ public class Connection implements Closeable {
 	public Request createRequest() {
 		Request request;
 		
-		try {
-			request = new Request(this.startLine, this.header, this.body.toByteArray());
+		try {			
+			request = new Request(this.channel.getRemoteAddress(), this.startLine, this.header, this.body.toByteArray());
 		} catch (IOException ioe) {
 			ioe.printStackTrace();
 			
@@ -249,6 +251,7 @@ public class Connection implements Closeable {
 	}
 	
 	class Request implements com.itahm.http.Request {
+		private final SocketAddress peer;
 		private final Map<String, String> header;
 		private final byte [] body;
 		private final String method;
@@ -258,7 +261,8 @@ public class Connection implements Closeable {
 		private Session session;
 		private String queryString;
 		
-		public Request(String startLine, Map<String, String> header, byte [] body) throws IOException {
+		public Request(SocketAddress peer, String startLine, Map<String, String> header, byte [] body) throws IOException {
+			this.peer = peer;
 			this.header = header;
 			this.body = body;
 			
@@ -312,30 +316,15 @@ public class Connection implements Closeable {
 		}
 		
 		@Override
+		public String getRemoteAddr() {
+			return ((InetSocketAddress)this.peer).getAddress().getHostAddress();
+		}
+		
+		@Override
 		public Session getSession() {
 			return getSession(true);
 		}
 		
-		/*
-		public Session getSession(boolean create) {
-			if (this.session != null) {
-				return this.session;
-			}
-			
-			if (this.cookie != null) {
-				this.session = Session.find(this.cookie);
-			}
-			
-			if (this.session != null) {
-				this.session.update();
-			}
-			else if (create) {
-				this.session = new Session();
-			}
-			
-			return this.session;
-		}
-		*/
 		@Override
 		public Session getSession(boolean create) {
 			if (this.session == null) {
