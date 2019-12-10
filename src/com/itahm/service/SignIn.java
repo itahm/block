@@ -96,9 +96,8 @@ public class SignIn implements Serviceable {
 		
 		Session session = request.getSession(false);
 	
-		switch (data.getString("command").toUpperCase()) {
-		case "SIGNIN":
-			if (session == null) {
+		if (session == null) {
+			if (data.getString("command").equalsIgnoreCase("SIGNIN")) {
 				try (Connection c = connPool.getConnection()) {
 					try (PreparedStatement pstmt = c.prepareStatement("SELECT username, level FROM account"+
 						" WHERE username=? AND password=?;")) {
@@ -118,8 +117,8 @@ public class SignIn implements Serviceable {
 								session.setMaxInactiveInterval(SESS_TIMEOUT);
 								
 								response.write(account.toString());
-							} else {
-								response.setStatus(Response.Status.UNAUTHORIZED);
+								
+								return true;
 							}
 						}
 					}
@@ -129,17 +128,19 @@ public class SignIn implements Serviceable {
 					response.setStatus(Response.Status.SERVERERROR);
 				}
 			}
-			else {
-				response.write(((JSONObject)session.getAttribute("account")).toString());
-			}
+				
+			response.setStatus(Response.Status.UNAUTHORIZED);
+			
+			return true;
+		}
+		
+		switch (data.getString("command").toUpperCase()) {
+		case "SIGNIN":
+			response.write(((JSONObject)session.getAttribute("account")).toString());
 			
 			return true;
 		case "SIGNOUT":
-			if (session == null) {
-				response.setStatus(Response.Status.UNAUTHORIZED);
-			} else {
-				session.invalidate();
-			}
+			session.invalidate();
 			
 			return true;
 		case "ADD":

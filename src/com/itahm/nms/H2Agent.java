@@ -1046,8 +1046,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 	}
 
 	@Override
-	public JSONObject getNode() {System.out.println("start");
-	long s = System.currentTimeMillis();
+	public JSONObject getNode() {
 		try (Connection c = this.coreConnPool.getConnection()) {
 			try (Statement stmt = c.createStatement()) {
 				JSONObject
@@ -1095,32 +1094,25 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 						nodeData.put(Long.toString(id), node);
 					}
 				}
-				System.out.format("여기까지 걸린시간: %d\n", System.currentTimeMillis() - s);
-				s = System.currentTimeMillis();
+				
 				try (Connection c2 = this.dataConnPool.getConnection()) {
-					System.out.format("dataconn 걸린시간: %d\n", System.currentTimeMillis() - s);
-					s = System.currentTimeMillis();
-					try (Statement stmt2 = c2.createStatement()) {/*
+					try (Statement stmt2 = c2.createStatement()) {
 						try (ResultSet rs = stmt2.executeQuery("SELECT id"+
 							" FROM resource"+
 							" WHERE critical=TRUE"+
 							" GROUP BY id"+
 							" HAVING COUNT(critical) > 0;")) {
-							System.out.format("query 시간: %d\n", System.currentTimeMillis() - s);
-							s = System.currentTimeMillis();
-							while (rs.next()) {System.out.println("?");
+							while (rs.next()) {
 								id = rs.getLong(1);
 								
 								if (nodeData.has(Long.toString(id))) {
 									nodeData.getJSONObject(Long.toString(id)).put("critical", true);
 								}
 							}
-							System.out.format("parsing 걸린시간: %d\n", System.currentTimeMillis() - s);
-							s = System.currentTimeMillis();
-						}*/
+						}
 					}
 				}
-				System.out.format("총 걸린시간: %d\n", System.currentTimeMillis() - s);
+				
 				return nodeData;
 			}
 		} catch (SQLException sqle) {
@@ -3110,15 +3102,9 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 						}
 						
 						this.statusMap.put(id, rs.getBoolean(8));
-						
-						Thread.sleep(100);
 					}
 					
 					System.out.format("\n%d Nodes initialized.\n", count);
-					
-					//this.dataConnPool.setMaxConnections((int)(count /2));
-				} catch (InterruptedException ie) {
-					ie.printStackTrace();
 				}
 			}
 		} catch (SQLException sqle) {

@@ -82,7 +82,7 @@ public class Batch extends Timer {
 					", timestamp BIGINT DEFAULT NULL);");
 			}
 			
-			System.out.format("New rolling database created in %dms.\n", System.currentTimeMillis() - start);
+			System.out.format("Rolling database created in %dms.\n", System.currentTimeMillis() - start);
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
 		}

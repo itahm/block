@@ -41,7 +41,14 @@ public class IFInOctets implements Parseable {
 			v = oidMap.get("1.3.6.1.2.1.2.2.1.10");
 			
 			if (v != null) {
-				int index = Integer.valueOf(idx);
+				int index;
+				
+				try {
+					index = Integer.valueOf(idx);
+				} catch (NumberFormatException nfe) {
+					return null;
+				}
+				
 				Long bps = parseBPS(id, oldIndexMap.get(index), speed, Long.valueOf(v.value), v.timestamp);
 				
 				oldIndexMap.put(index, new Value(v.timestamp, v.value));

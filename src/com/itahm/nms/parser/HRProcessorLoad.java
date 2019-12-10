@@ -16,9 +16,15 @@ public class HRProcessorLoad extends AbstractParser {
 		Value v = oidMap.get("1.3.6.1.2.1.25.3.3.1.2");
 		
 		if (v != null) {
-			int
-				index = Integer.valueOf(idx),
-				load = Integer.valueOf(v.value);
+			int index;
+			
+			try {
+				index = Integer.valueOf(idx);
+			} catch (NumberFormatException nfe) {
+				return null;
+			}
+			
+			int load = Integer.valueOf(v.value);
 			
 			Map<Integer, Integer> indexMap = this.load.get(id);
 				

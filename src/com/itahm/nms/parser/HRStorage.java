@@ -38,8 +38,15 @@ abstract public class HRStorage implements Parseable {
 						v = oidMap.get("1.3.6.1.2.1.25.2.3.1.6"); // used
 		
 						if (v != null) {
+							int index;
+							
+							try {
+								index = Integer.valueOf(idx);
+							} catch (NumberFormatException nfe) {
+								return null;
+							}
+							
 							long used = Long.valueOf(v.value);
-							int index = Integer.valueOf(idx);
 							Max max = this.max.get(id);
 							
 							if (max == null || Long.valueOf(max.value) < used * units) {

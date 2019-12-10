@@ -22,7 +22,14 @@ abstract public class IFErrors extends AbstractParser {
 				this.oldMap.put(id, oldIndexMap = new HashMap<Integer, Value>());
 			}
 			
-			int index = Integer.valueOf(idx);
+			int index;
+			
+			try {
+				index = Integer.valueOf(idx);
+			} catch (NumberFormatException nfe) {
+				return null;
+			}
+			
 			Long cps = parse(id, oldIndexMap.get(index), Long.valueOf(v.value), v.timestamp);
 			
 			oldIndexMap.put(index, new Value(v.timestamp, v.value));

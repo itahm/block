@@ -13,7 +13,14 @@ public class ResponseTime extends AbstractParser {
 	
 	@Override
 	public CriticalEvent parse(long id, String idx, Map<String, Value> oidMap) {
-		int index = Integer.valueOf(idx);
+		int index;
+		
+		try {
+			index = Integer.valueOf(idx);
+		} catch (NumberFormatException nfe) {
+			return null;
+		}
+		
 		Value v = oidMap.get("1.3.6.1.4.1.49447.1");
 		
 		if (v != null) {
