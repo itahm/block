@@ -7,6 +7,7 @@ import com.itahm.json.JSONObject;
 import com.itahm.nms.Bean.Event;
 
 public interface Commander extends Closeable {
+	public boolean addBranch(JSONObject branch);
 	public JSONObject addIcon(String type, JSONObject icon);
 	public boolean addLink(long nodeFrom, long nodeTo);
 	public JSONObject addNode(JSONObject node);
@@ -14,6 +15,8 @@ public interface Commander extends Closeable {
 	public boolean addProfile(String name, JSONObject profile);
 	public boolean addUser(String name, JSONObject user);
 	public void backup() throws Exception;
+	public JSONObject getBranch();
+	public JSONObject getBranch(long id);
 	public JSONObject getConfig();
 	public JSONObject getCritical(long id, String index, String oid);
 	public JSONObject getEvent(long eventID);
@@ -38,6 +41,8 @@ public interface Commander extends Closeable {
 	public JSONObject getUser();
 	public JSONObject getUser(String name);
 	public void sendEvent (Event event);
+	//public boolean setBGroup(long id, JSONObject bgroup);
+	public boolean setBranch(long id, JSONObject branch);
 	public boolean setCritical(long id, String index, String oid, int critical);
 	public boolean setIcon(String id, JSONObject icon);
 	public boolean setLink(long nodeFrom, long nodeTo, JSONObject link);
@@ -55,6 +60,8 @@ public interface Commander extends Closeable {
 	public boolean setTimeout(int timeout);
 	public boolean setUser(String id, JSONObject user);
 	public void start();
+	//public boolean removeBGroup(long id);
+	public boolean removeBranch(long id);
 	public boolean removeIcon(String type);
 	public boolean removeLink(long id);
 	public boolean removeNode(long id);

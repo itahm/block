@@ -5,7 +5,9 @@ import java.io.UnsupportedEncodingException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.Date;
 import java.util.Timer;
 import java.util.TimerTask;
@@ -40,6 +42,16 @@ public class NMS implements Serviceable, Listener {
 		limit = builder.limit;
 		
 		if (expire > 0) {
+			Calendar c = Calendar.getInstance();
+			
+			if (expire < c.getTimeInMillis()) {
+				throw new Exception("Expired License.");
+			}
+			
+			c.setTimeInMillis(expire);
+			
+			System.out.format("License expires on %s.\n", new SimpleDateFormat("MMM dd, yyyy").format(c.getTime()));
+			
 			new Timer("Expire Scheduler").schedule(new TimerTask() {
 
 				@Override
@@ -299,6 +311,12 @@ public class NMS implements Serviceable, Listener {
 	
 	private void add(JSONObject request, Response response) {
 		switch(request.getString("target").toUpperCase()) {
+		case "BRANCH":
+			if (!this.agent.addBranch(request.getJSONObject("branch"))) {
+				response.setStatus(Response.Status.SERVERERROR);
+			}
+			
+			break;
 		case "ICON":
 			if (this.agent.addIcon(request.getString("type"), request.getJSONObject("icon")) == null) {
 				response.setStatus(Response.Status.CONFLICT);
@@ -348,6 +366,12 @@ public class NMS implements Serviceable, Listener {
 	
 	private void set(JSONObject request, Response response) {
 		switch(request.getString("target").toUpperCase()) {
+		case "BRANCH":
+			if (!this.agent.setBranch(request.getLong("id"), request.getJSONObject("branch"))) {
+				response.setStatus(Response.Status.SERVERERROR);
+			}
+			
+			break;
 		case "CONFIG":
 			switch (request.getString("key")) {
 			case "retry": 
@@ -433,12 +457,6 @@ public class NMS implements Serviceable, Listener {
 			}
 			
 			break;
-		case "PATH":
-			if (!this.agent.setPath(request.getLong("nodeFrom"), request.getLong("nodeTo"), request.getJSONObject("path"))) {
-				response.setStatus(Response.Status.CONFLICT);
-			}
-			
-			break;
 		case "MONITOR":
 			if (!this.agent.setMonitor(request.getLong("id"), request.getString("ip"), request.has("protocol")? request.getString("protocol"): null)) {
 				response.setStatus(Response.Status.CONFLICT);
@@ -448,6 +466,12 @@ public class NMS implements Serviceable, Listener {
 		case "NODE":
 			if (!this.agent.setNode(request.getLong("id"), request.getJSONObject("node"))) {
 				response.setStatus(Response.Status.SERVERERROR);
+			}
+			
+			break;
+		case "PATH":
+			if (!this.agent.setPath(request.getLong("nodeFrom"), request.getLong("nodeTo"), request.getJSONObject("path"))) {
+				response.setStatus(Response.Status.CONFLICT);
 			}
 			
 			break;
@@ -494,6 +518,12 @@ public class NMS implements Serviceable, Listener {
 	
 	private void remove(JSONObject request, Response response) {
 		switch(request.getString("target").toUpperCase()) {
+		case "BRANCH":
+			if (!this.agent.removeBranch(request.getLong("id"))) {
+				response.setStatus(Response.Status.SERVERERROR);
+			}
+			
+			break;
 		case "ICON":
 			if (!this.agent.removeIcon(request.getString("type"))) {
 				response.setStatus(Response.Status.CONFLICT);
@@ -551,6 +581,8 @@ public class NMS implements Serviceable, Listener {
 	
 	private JSONObject get(String target, JSONObject request) {
 		switch(target.toUpperCase()) {
+		case "BRANCH":
+			return request.has("id")? this.agent.getBranch(request.getLong("id")): this.agent.getBranch();
 		case "CONFIG":
 			return this.agent.getConfig();
 		case "CRITICAL":
@@ -591,7 +623,7 @@ public class NMS implements Serviceable, Listener {
 				this.agent.getPath(request.getLong("nodeFrom"), request.getLong("nodeTo")):
 				this.agent.getPath();
 		case "POSITION":
-			return this.agent.getPosition("position");
+			return this.agent.getPosition(request.has("name")? request.getString("name"): "position");
 		case "PROFILE":
 			return this.agent.getProfile();
 		case "RESOURCE":

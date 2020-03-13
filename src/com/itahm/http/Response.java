@@ -25,6 +25,7 @@ public class Response {
 		NOCONTENT(204, "No Content"),
 		BADREQUEST(400, "Bad request"),
 		UNAUTHORIZED(401, "Unauthorized"),
+		FORBIDDEN(403, "Forbidden"),
 		NOTFOUND(404, "Not found"),
 		NOTALLOWED(405, "Method Not Allowed"),
 		CONFLICT(409, "Conflict"),

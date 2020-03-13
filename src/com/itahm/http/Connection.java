@@ -253,6 +253,7 @@ public class Connection implements Closeable {
 	class Request implements com.itahm.http.Request {
 		private final SocketAddress peer;
 		private final Map<String, String> header;
+		private final Map<String, Object> attribute = new HashMap<>();
 		private final byte [] body;
 		private final String method;
 		private final String uri;
@@ -316,6 +317,11 @@ public class Connection implements Closeable {
 		}
 		
 		@Override
+		public Object getAttribute(String name) {
+			return this.attribute.get(name);
+		}
+		
+		@Override
 		public String getRemoteAddr() {
 			return ((InetSocketAddress)this.peer).getAddress().getHostAddress();
 		}
@@ -370,6 +376,11 @@ public class Connection implements Closeable {
 		@Override
 		public String getHeader(String name) {
 			return this.header.get(name.toLowerCase());
+		}
+		
+		@Override
+		public void setAttribute(String name, Object o) {
+			this.attribute.put(name, o);
 		}
 	}
 }

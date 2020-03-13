@@ -196,7 +196,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			try {
 				/**
 				 * CONFIG
-				 */
+				 **/
 				try (Statement stmt = c.createStatement()) {
 					stmt.executeUpdate("CREATE TABLE IF NOT EXISTS config"+
 						" (key VARCHAR NOT NULL"+
@@ -226,7 +226,8 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 						" (type VARCHAR PRIMARY KEY"+
 						", _group VARCHAR NOT NULL"+
 						", src VARCHAR NOT NULL"+
-						", disabled VARCHAR NOT NULL);");
+						", disabled VARCHAR NOT NULL"+
+						", shutdown VARCHAR NOT NULL);");
 				}
 				/**END**/
 				
@@ -275,6 +276,21 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 				
 				try (Statement stmt = c.createStatement()) {
 					stmt.executeUpdate("CREATE INDEX IF NOT EXISTS node_index ON node (ip);");
+				}
+				/**END**/
+				
+				/**
+				 * BRANCH
+				 **/
+				try (Statement stmt = c.createStatement()) {
+					stmt.executeUpdate("CREATE TABLE IF NOT EXISTS branch"+
+						" (id BIGINT PRIMARY KEY"+
+						", address VARCHAR NOT NULL"+
+						", subaddr VARCHAR NOT NULL DEFAULT ''"+
+						", phone VARCHAR NOT NULL DEFAULT ''"+
+						", lat VARCHAR DEFAULT NULL"+
+						", lng VARCHAR DEFAULT NULL"+
+						", FOREIGN KEY (id) REFERENCES node(id));");
 				}
 				/**END**/
 				
@@ -562,15 +578,50 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 	}
 
 	@Override
+	public boolean addBranch(JSONObject branch) {
+		try (Connection c = this.coreConnPool.getConnection()) {
+			try (PreparedStatement pstmt = c.prepareStatement("INSERT INTO branch (parent, name, address, subaddr, phone, lat, lng)"+
+				" VALUES(?, ?, ?, ?, ?, ?, ?);")) {
+				pstmt.setLong(1, branch.getLong("parent"));
+				pstmt.setString(2, branch.getString("name"));
+				pstmt.setString(3, branch.getString("address"));
+				pstmt.setString(4, branch.getString("subaddr"));
+				pstmt.setString(5, branch.getString("phone"));
+				
+				if (branch.has("lat")) {
+					pstmt.setString(6, branch.getString("lat"));
+				} else {
+					pstmt.setNull(6, Types.NULL);
+				}
+				
+				if (branch.has("lng")) {
+					pstmt.setString(7, branch.getString("lng"));
+				} else {
+					pstmt.setNull(7, Types.NULL);
+				}
+				
+				pstmt.executeUpdate();
+			}
+			
+			return true;
+		} catch (SQLException sqle) {
+			sqle.printStackTrace();
+		}
+		
+		return false;
+	}
+		
+	@Override
 	public JSONObject addIcon(String type, JSONObject icon) {
 		try (Connection c = this.coreConnPool.getConnection()) {
 			try (PreparedStatement pstmt = c.prepareStatement("INSERT INTO icon"+
-				" (type, _group, src, disabled)"+
-				" VALUES (?, ?, ?, ?);")) {
+				" (type, _group, src, disabled, shutdown)"+
+				" VALUES (?, ?, ?, ?, ?);")) {
 				pstmt.setString(1, icon.getString("type"));
 				pstmt.setString(2, icon.getString("group"));
 				pstmt.setString(3, icon.getString("src"));
 				pstmt.setString(4, icon.getString("disabled"));
+				pstmt.setString(5, icon.getString("shutdown"));
 				
 				pstmt.executeUpdate();
 			}
@@ -613,55 +664,92 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 	@Override
 	public JSONObject addNode(JSONObject node) {
 		try (Connection c = this.coreConnPool.getConnection()) {
-			synchronized(this.nextNodeID) {		
-				try (PreparedStatement pstmt = c.prepareStatement("INSERT INTO node"+
-					" (id, name, type, ip, label, extra)"+
-					" values (?, ?, ?, ?, ?, ?);")) {
-					pstmt.setLong(1, this.nextNodeID);
+			c.setAutoCommit(false);
+			
+			try {
+				synchronized(this.nextNodeID) {
+					try (PreparedStatement pstmt = c.prepareStatement("INSERT INTO node"+
+						" (id, name, type, ip, label, extra)"+
+						" values (?, ?, ?, ?, ?, ?);")) {
+						pstmt.setLong(1, this.nextNodeID);
+						
+						if (node.has("name")) {
+							pstmt.setString(2, node.getString("name"));
+						}
+						else {
+							pstmt.setNull(2, Types.NULL);
+						}
+						
+						if (node.has("type")) {
+							pstmt.setString(3, node.getString("type"));
+						}
+						else {
+							pstmt.setNull(3, Types.NULL);
+						}
+						
+						if (node.has("ip")) {
+							pstmt.setString(4, node.getString("ip"));
+						}
+						else {
+							pstmt.setNull(4, Types.NULL);
+						}
+						
+						if (node.has("label")) {
+							pstmt.setString(5, node.getString("label"));
+						}
+						else {
+							pstmt.setNull(5, Types.NULL);
+						}
+						
+						if (node.has("extra")) {
+							pstmt.setString(6, node.getString("extra"));
+						}
+						else {
+							pstmt.setNull(6, Types.NULL);
+						}
+						
+						pstmt.executeUpdate();
+					}
 					
-					if (node.has("name")) {
-						pstmt.setString(2, node.getString("name"));
+					if (node.has("branch")) {
+						JSONObject branch = node.getJSONObject("branch");
+						
+						try (PreparedStatement pstmt = c.prepareStatement("INSERT INTO branch"+
+							" (id, address, subaddr, phone, lat, lng)"+
+							" values (?, ?, ?, ?, ?, ?);")) {
+							pstmt.setLong(1, this.nextNodeID);
+							pstmt.setString(2, branch.getString("address"));
+							pstmt.setString(3, branch.getString("subaddr"));
+							pstmt.setString(4, branch.getString("phone"));
+							
+							if (branch.has("lat")) {
+								pstmt.setString(5, branch.getString("lat"));
+							} else {
+								pstmt.setNull(5, Types.NULL);
+							}
+							
+							if (branch.has("lng")) {
+								pstmt.setString(5, branch.getString("lng"));
+							} else {
+								pstmt.setNull(6, Types.NULL);
+							}
+							
+							pstmt.executeUpdate();
+						}
 					}
-					else {
-						pstmt.setNull(2, Types.NULL);
-					}
+				
+					node.put("id", this.nextNodeID);
+				
+					c.commit();
 					
-					if (node.has("type")) {
-						pstmt.setString(3, node.getString("type"));
-					}
-					else {
-						pstmt.setNull(3, Types.NULL);
-					}
+					this.nextNodeID++;
 					
-					if (node.has("ip")) {
-						pstmt.setString(4, node.getString("ip"));
-					}
-					else {
-						pstmt.setNull(4, Types.NULL);
-					}
-					
-					if (node.has("label")) {
-						pstmt.setString(5, node.getString("label"));
-					}
-					else {
-						pstmt.setNull(5, Types.NULL);
-					}
-					
-					if (node.has("extra")) {
-						pstmt.setString(6, node.getString("extra"));
-					}
-					else {
-						pstmt.setNull(6, Types.NULL);
-					}
-					
-					pstmt.executeUpdate();
+					return node;
 				}
+			} catch (SQLException sqle) {
+				c.rollback();
 				
-				node.put("id", this.nextNodeID);
-				
-				this.nextNodeID++;
-				
-				return node;
+				throw sqle;
 			}
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
@@ -754,6 +842,97 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 	}
 
 	@Override
+	public JSONObject getBranch() {
+		try (Connection c = this.coreConnPool.getConnection()) {
+			try (Statement stmt = c.createStatement()) {
+				JSONObject
+					branchData = new JSONObject(),
+					branch;
+				String latLng;
+				
+				try (ResultSet rs = stmt.executeQuery("SELECT b.id, name, address, subaddr, phone, lat, lng"+
+					" FROM branch AS b"+
+					" LEFT JOIN node AS n"+
+					" ON b.id = n.id;")) {
+					while (rs.next()) {
+						branch = new JSONObject()
+							.put("id", rs.getLong(1))
+							.put("name", rs.getString(2))
+							.put("address", rs.getString(3))
+							.put("subaddr", rs.getString(4))
+							.put("phone", rs.getString(5));
+						
+						latLng = rs.getString(6);
+						
+						if (!rs.wasNull()) {
+							branch.put("lat", latLng);
+						}
+						
+						latLng = rs.getString(7);
+						
+						if (!rs.wasNull()) {
+							branch.put("lng", latLng);
+						}
+						
+						branchData.put(Long.toString(rs.getLong(1)), branch);
+					}
+				}
+				
+				return branchData;
+			}
+		} catch (SQLException sqle) {
+			sqle.printStackTrace();
+		}
+		
+		return null;
+	}
+	
+	@Override
+	public JSONObject getBranch(long id) {
+		try (Connection c = this.coreConnPool.getConnection()) {
+			try (PreparedStatement pstmt = c.prepareStatement("SELECT name, address, subaddr, phone, lat, lng"+
+				" FROM branch"+
+				" LEFT JOIN node AS n"+
+				" ON b.id = n.id"+
+				" WHERE id=?;")) {
+				pstmt.setLong(1, id);
+				
+				try (ResultSet rs = pstmt.executeQuery()) {
+					if (rs.next()) {
+						JSONObject branch = new JSONObject();
+						String latLng;
+						
+						branch
+							.put("id", id)
+							.put("name", rs.getString(1))
+							.put("address", rs.getString(2))
+							.put("subaddr", rs.getString(3))
+							.put("phone", rs.getString(4));
+						
+						latLng = rs.getString(5);
+						
+						if (!rs.wasNull()) {
+							branch.put("lat", latLng);
+						}
+						
+						latLng = rs.getString(6);
+						
+						if (!rs.wasNull()) {
+							branch.put("lng", latLng);
+						}
+						
+						return branch;
+					}
+				}
+			}
+		} catch (SQLException sqle) {
+			sqle.printStackTrace();
+		}
+		
+		return null;
+	}
+		
+	@Override
 	public JSONObject getCritical(long id, String index, String oid) {
 		Map<String, Map<String, Value>> indexMap = this.resourceMap.get(id);
 		
@@ -771,18 +950,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 		
 		return null;
 	}
-	// TODO
-	/*
-	public Connection dataConnPool.getConnection() throws SQLException {
-		if (this.dataConnPool.getActiveConnections() == this.dataConnPool.getMaxConnections()) {
-			this.dataConnPool.setMaxConnections(this.dataConnPool.getMaxConnections() +10);
-		
-			System.out.println(this.dataConnPool.getMaxConnections());
-		}
-		
-		return this.dataConnPool.getConnection();
-	}
-	*/
+	
 	@Override
 	public JSONObject getEvent(long eventID) {
 		try (Connection c =  this.dataConnPool.getConnection()) {
@@ -864,14 +1032,15 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			try (Statement stmt = c.createStatement()) {
 				JSONObject iconData = new JSONObject();
 				
-				try (ResultSet rs = stmt.executeQuery("SELECT type, _group, src, disabled"+
+				try (ResultSet rs = stmt.executeQuery("SELECT type, _group, src, disabled, shutdown"+
 					" FROM icon;")) {
 					while (rs.next()) {
 						iconData.put(rs.getString(1), new JSONObject()
 							.put("type", rs.getString(1))
 							.put("group", rs.getString(2))
 							.put("src", rs.getString(3))
-							.put("disabled", rs.getString(4)));
+							.put("disabled", rs.getString(4))
+							.put("shutdown", rs.getString(5)));
 					}
 				}
 				
@@ -887,7 +1056,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 	@Override
 	public JSONObject getIcon(String type) {
 		try (Connection c = this.coreConnPool.getConnection()) {
-			try (PreparedStatement pstmt = c.prepareStatement("SELECT type, _group, src, disabled"+
+			try (PreparedStatement pstmt = c.prepareStatement("SELECT type, _group, src, disabled, shutdown"+
 				" FROM icon"+
 				" WHERE type=?;")) {
 				pstmt.setString(1,  type);
@@ -898,7 +1067,8 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 							.put("type", rs.getString(1))
 							.put("group", rs.getString(2))
 							.put("src", rs.getString(3))
-							.put("disabled", rs.getString(4));
+							.put("disabled", rs.getString(4))
+							.put("shutdown", rs.getString(5));
 					}
 				}
 			}
@@ -1163,6 +1333,32 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 						if (!rs.wasNull()) {
 							node.put("status", status);
 						}
+					}
+				}
+			}
+			
+			try (PreparedStatement pstmt = c.prepareStatement("SELECT address, subaddr, phone, lat, lng"+
+				" FROM branch"+
+				" WHERE id=?;")) {
+				pstmt.setLong(1, id);
+				
+				try (ResultSet rs = pstmt.executeQuery()) {
+					if (rs.next()) {
+						JSONObject branch = new JSONObject();
+						
+						branch.put("address", rs.getString(1));
+						branch.put("subaddr", rs.getString(2));
+						branch.put("phone", rs.getString(3));
+						
+						if (rs.getString(4) != null) {
+							branch.put("lat", rs.getString(4));
+						}
+						
+						if (rs.getString(5) != null) {
+							branch.put("lng", rs.getString(5));
+						}
+						
+						node.put("branch", branch);
 					}
 				}
 			}
@@ -1798,14 +1994,23 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 		
 		switch (rule.syntax) {
 			case "DisplayString":
-				value = Util.toValidString(((OctetString)variable).getValue());
+				if (variable instanceof OctetString) {
+					value = Util.toValidString(((OctetString)variable).getValue());
+				} else {
+					value = variable.toString();
+				}
 				
 				break;
 			case "TimeTicks":
-				value = Long.toString(((TimeTicks)variable).toMilliseconds());
+				if (variable instanceof TimeTicks) {
+					value = Long.toString(((TimeTicks)variable).toMilliseconds());
+				} else {
+					value = variable.toString();
+				}
 				
 				break;
-			default: value = variable.toString();
+			default:
+				value = variable.toString();
 		}
 		
 		if (rule.onChange){
@@ -2134,7 +2339,26 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 		
 		return false;
 	}
-
+	
+	@Override
+	public boolean removeBranch(long id) {
+		try (Connection c = this.coreConnPool.getConnection()) {
+			try (PreparedStatement pstmt = c.prepareStatement("DELETE"+
+				" FROM branch"+
+				" WHERE id=?;")) {
+				pstmt.setLong(1, id);
+				
+				pstmt.executeUpdate();
+			}
+			
+			return true;
+		} catch (SQLException sqle) {
+			sqle.printStackTrace();
+		}
+		
+		return false;
+	}
+	
 	@Override
 	public boolean removeIcon(String type) {
 		try (Connection c = this.coreConnPool.getConnection()) {
@@ -2218,15 +2442,23 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 				}
 				
 				try (PreparedStatement pstmt = c.prepareStatement("DELETE"+
-					" FROM node"+
+					" FROM monitor"+
 					" WHERE id=?;")) {
 					pstmt.setLong(1, id);
 					
 					pstmt.executeUpdate();
 				}
-				
+			
 				try (PreparedStatement pstmt = c.prepareStatement("DELETE"+
-					" FROM monitor"+
+					" FROM branch"+
+					" WHERE id=?;")) {
+					pstmt.setLong(1, id);
+					
+					pstmt.executeUpdate();
+				}
+			
+				try (PreparedStatement pstmt = c.prepareStatement("DELETE"+
+					" FROM node"+
 					" WHERE id=?;")) {
 					pstmt.setLong(1, id);
 					
@@ -2504,6 +2736,43 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			sqle.printStackTrace();
 		}
 	}
+	
+	@Override
+	public boolean setBranch(long id, JSONObject branch) {
+		try (Connection c = this.coreConnPool.getConnection()) {
+			try (PreparedStatement pstmt = c.prepareStatement("UPDATE branch"+
+				" SET parent=?, name=?, address=?, subaddr=?, phone=?, lat=?, lng=?"+
+				" WHERE id=?;")) {
+				pstmt.setLong(1, branch.getLong("parent"));
+				pstmt.setString(2, branch.getString("name"));
+				pstmt.setString(3, branch.getString("address"));
+				pstmt.setString(4, branch.getString("subaddr"));
+				pstmt.setString(5, branch.getString("phone"));
+				
+				if (branch.has("lat")) {
+					pstmt.setString(6, branch.getString("lat"));	
+				} else {
+					pstmt.setNull(6, Types.NULL);
+				}
+				
+				if (branch.has("lng")) {
+					pstmt.setString(7, branch.getString("lng"));	
+				} else {
+					pstmt.setNull(7, Types.NULL);
+				}
+				
+				pstmt.setLong(8, id);
+				
+				pstmt.executeUpdate();
+			}
+			
+			return true;
+		} catch (SQLException sqle) {
+			sqle.printStackTrace();
+		}
+		
+		return false;
+	}
 
 	@Override
 	public boolean setCritical(long id, String index, String oid, int limit) {
@@ -2559,11 +2828,13 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 				" _group=?,"+
 				" src=?,"+
 				" disabled=?"+
+				" shutdown=?"+
 				" WHERE type=?;")) {
 				pstmt.setString(1, icon.getString("group"));
 				pstmt.setString(2, icon.getString("src"));
 				pstmt.setString(3, icon.getString("disabled"));
-				pstmt.setString(4, icon.getString("type"));
+				pstmt.setString(4, icon.getString("shutdown"));
+				pstmt.setString(5, icon.getString("type"));
 				
 				pstmt.executeUpdate();
 			}
@@ -2696,43 +2967,87 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 	@Override
 	public boolean setNode(long id, JSONObject node) {
 		try (Connection c = this.coreConnPool.getConnection()) {
-			try (PreparedStatement pstmt = c.prepareStatement("UPDATE node"+
-				" SET name=?, type=?, label=?, extra=?"+
-				" WHERE id=?;")) {
-				if (node.has("name")) {
-					pstmt.setString(1, node.getString("name"));
-				}
-				else {
-					pstmt.setNull(1, Types.NULL);
-				}
-				
-				if (node.has("type")) {
-					pstmt.setString(2, node.getString("type"));
-				}
-				else {
-					pstmt.setNull(2, Types.NULL);
-				}
-				
-				if (node.has("label")) {
-					pstmt.setString(3, node.getString("label"));
-				}
-				else {
-					pstmt.setNull(3, Types.NULL);
-				}
-				
-				if (node.has("extra")) {
-					pstmt.setString(4, node.getString("extra"));
-				}
-				else {
-					pstmt.setNull(4, Types.NULL);
-				}
-				
-				pstmt.setLong(5, id);
-				
-				pstmt.executeUpdate();
-			}
+			c.setAutoCommit(false);
 			
-			return true;
+			try {
+				try (PreparedStatement pstmt = c.prepareStatement("UPDATE node"+
+					" SET name=?, type=?, label=?, extra=?"+
+					" WHERE id=?;")) {
+					if (node.has("name")) {
+						pstmt.setString(1, node.getString("name"));
+					}
+					else {
+						pstmt.setNull(1, Types.NULL);
+					}
+					
+					if (node.has("type")) {
+						pstmt.setString(2, node.getString("type"));
+					}
+					else {
+						pstmt.setNull(2, Types.NULL);
+					}
+					
+					if (node.has("label")) {
+						pstmt.setString(3, node.getString("label"));
+					}
+					else {
+						pstmt.setNull(3, Types.NULL);
+					}
+					
+					if (node.has("extra")) {
+						pstmt.setString(4, node.getString("extra"));
+					}
+					else {
+						pstmt.setNull(4, Types.NULL);
+					}
+					
+					pstmt.setLong(5, id);
+					
+					pstmt.executeUpdate();
+				}
+				
+				if (node.has("branch")) {
+					JSONObject branch = node.getJSONObject("branch");
+					
+					try (PreparedStatement pstmt = c.prepareStatement("MERGE INTO branch"+
+						" (id, address, subaddr, phone, lat, lng)"+
+						" VALUES(?, ?, ?, ?, ?, ?);")) {
+						pstmt.setLong(1, id);
+						pstmt.setString(2, branch.getString("address"));
+						pstmt.setString(3, branch.getString("subaddr"));
+						pstmt.setString(4, branch.getString("phone"));
+						
+						if (branch.has("lat")) {
+							pstmt.setString(5, branch.getString("lat"));
+						} else {
+							pstmt.setNull(5, Types.NULL);
+						}
+						
+						if (branch.has("lng")) {
+							pstmt.setString(6, branch.getString("lng"));
+						} else {
+							pstmt.setNull(6, Types.NULL);
+						}
+						
+						pstmt.executeUpdate();
+					}
+				} else {
+					try (PreparedStatement pstmt = c.prepareStatement("DELETE FROM branch"+
+						" WHERE id=?;")) {
+						pstmt.setLong(1, id);
+						
+						pstmt.executeUpdate();
+					}
+				}
+				
+				c.commit();
+				
+				return true;
+			} catch (SQLException sqle) {
+				c.rollback();
+				
+				throw sqle;
+			}
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
 		}
@@ -3111,5 +3426,4 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			sqle.printStackTrace();
 		}
 	}
-
 }

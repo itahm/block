@@ -126,6 +126,9 @@ public abstract class HTTPServer implements Runnable, Closeable {
 		this.selector.wakeup();
 	}
 
+	protected void doPut(Request connection, Response response) {
+	}
+	
 	@Override
 	public void run() {
 		Iterator<SelectionKey> iterator = null;
