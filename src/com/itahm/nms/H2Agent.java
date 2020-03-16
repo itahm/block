@@ -227,7 +227,13 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 						", _group VARCHAR NOT NULL"+
 						", src VARCHAR NOT NULL"+
 						", disabled VARCHAR NOT NULL"+
-						", shutdown VARCHAR NOT NULL);");
+						", shutdown VARCHAR NOT NULL DEFAULT '');");
+				}
+				
+				try (Statement stmt = c.createStatement()) {
+					int i = stmt.executeUpdate("ALTER TABLE IF EXISTS icon"+
+						" ADD COLUMN shutdown IF NOT EXISTS VARCHAR NOT NULL DEFAULT '';");
+					System.out.format("%d rows affected!\n", i);
 				}
 				/**END**/
 				
