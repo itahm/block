@@ -59,4 +59,8 @@ public class ResponseTime extends AbstractParser {
 		return null;
 	}
 
+	@Override
+	public String toString() {
+		return "RESPONSETIME";
+	}
 }

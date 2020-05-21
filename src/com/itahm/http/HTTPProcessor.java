@@ -2,6 +2,8 @@ package com.itahm.http;
 
 import java.io.IOException;
 
+import com.itahm.http.Connection.Header;
+
 public class HTTPProcessor extends Thread {
 	
 	private final HTTPServer server;
@@ -23,43 +25,42 @@ public class HTTPProcessor extends Thread {
 	@Override
 	public void run() {
 		Response response = new Response();
+		String origin = request.getHeader(Header.ORIGIN.toString());
 		
 		switch(this.request.getMethod().toUpperCase()) {
 		case "GET":
 			this.server.doGet(this.request, response);
 			
 			break;
-		case "OPTIONS":
-			String origin = request.getHeader(com.itahm.http.Connection.Header.ORIGIN.toString());
-			
+		case "OPTIONS":			
 			if (origin != null) {
 				response.setHeader("Access-Control-Allow-Credentials", "true");
 				response.setHeader("Access-Control-Allow-Origin", origin);
 				response.setHeader("Access-Control-Allow-Methods","POST, GET, OPTIONS");
-				response.setHeader("Allow", "GET, POST, OPTIONS");
-				//response.setHeader("Access-Control-Allow-Methods","POST, GET, OPTIONS, PUT"); 
-				//response.setHeader("Access-Control-Allow-Headers", "File-Name");
-				//response.setHeader("Allow", "GET, POST, OPTIONS, PUT");
+				response.setHeader("Access-Control-Allow-Headers", "Session");
 			}
 			
 			break;
 		case "POST":
+			if (origin != null) {
+				response.setHeader("Access-Control-Allow-Credentials", "true");
+				response.setHeader("Access-Control-Allow-Origin", origin);
+			}
+			
 			this.server.doPost(this.request, response);
 			
 			break;
-		/*case "PUT":
-			this.server.doPut(this.request, response);
-			
-			break;*/
 		default:
 			response.setStatus(Response.Status.NOTALLOWED);
+			response.setHeader("Allow", "GET POST OPTIONS");
 		}
 		
 		Session session = this.request.getSession(false);
 		
 		if (session != null) {
 			if (!session.id.equals(request.getRequestedSessionId())) {
-				response.setHeader("Set-Cookie", String.format("%s=%s; HttpOnly", Session.ID, session.id));
+				response.setHeader("Access-Control-Expose-Headers", "Set-Session");
+				response.setHeader("Set-Session", session.id);
 			}
 		}
 		

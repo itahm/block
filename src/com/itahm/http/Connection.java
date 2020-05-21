@@ -16,7 +16,7 @@ import java.util.TimerTask;
 public class Connection implements Closeable {
 
 	public enum Header {
-		ORIGIN, COOKIE;
+		ORIGIN, SESSION;
 	};
 	
 	public final static long TIMEOUT_HOUR = 60 *60 *1000;
@@ -258,7 +258,7 @@ public class Connection implements Closeable {
 		private final String method;
 		private final String uri;
 		private final String version;
-		private final String cookie;
+		private final String sessionID;
 		private Session session;
 		private String queryString;
 		
@@ -287,28 +287,7 @@ public class Connection implements Closeable {
 			}
 			
 			this.version = token[2];
-			
-			String line = getHeader(Connection.Header.COOKIE.toString());
-			
-			if(line == null) {
-				this.cookie = null;
-			}
-			else {
-				String [] cookies = line.split("; ");
-				String cookie = null;
-				
-				for(i=0, length=cookies.length; i<length; i++) {
-					token = cookies[i].split("=");
-					
-					if (token.length == 2 && Session.ID.equals(token[0]) && token[1].trim().length() > 0) {
-						cookie = token[1];
-						
-						break;
-					}
-				}
-				
-				this.cookie = cookie;
-			}
+			this.sessionID = getHeader(Connection.Header.SESSION.toString());
 		}
 		
 		@Override
@@ -334,8 +313,8 @@ public class Connection implements Closeable {
 		@Override
 		public Session getSession(boolean create) {
 			if (this.session == null) {
-				if (this.cookie != null) {
-					this.session = Session.find(this.cookie);
+				if (this.sessionID != null) {
+					this.session = Session.find(this.sessionID);
 				}
 				
 				if (this.session != null) {
@@ -345,7 +324,7 @@ public class Connection implements Closeable {
 					this.session = new Session();
 				}
 			}
-
+			
 			return this.session;
 		}
 		
@@ -365,7 +344,7 @@ public class Connection implements Closeable {
 		
 		@Override
 		public String getRequestedSessionId() {
-			return this.cookie;
+			return this.sessionID;
 		}
 		
 		@Override

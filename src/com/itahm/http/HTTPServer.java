@@ -126,6 +126,12 @@ public abstract class HTTPServer implements Runnable, Closeable {
 		this.selector.wakeup();
 	}
 
+	protected void doGet(Request connection, Response response) {
+	}
+	
+	protected void doPost(Request connection, Response response) {
+	}
+	
 	protected void doPut(Request connection, Response response) {
 	}
 	
@@ -192,6 +198,4 @@ public abstract class HTTPServer implements Runnable, Closeable {
 		}
 	}
 	
-	abstract public void doPost(Request connection, Response response);	
-	abstract public void doGet(Request connection, Response response);
 }

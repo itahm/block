@@ -76,5 +76,10 @@ public class HRProcessorLoad extends AbstractParser {
 		
 		return sum / count;
 	}
+	
+	@Override
+	public String toString() {
+		return "HRPROCESSORLOAD";
+	}
 
 }

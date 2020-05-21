@@ -82,6 +82,10 @@ public class Batch extends Timer {
 					", timestamp BIGINT DEFAULT NULL);");
 			}
 			
+			try (Statement stmt = c.createStatement()) {
+				stmt.executeUpdate("CREATE INDEX IF NOT EXISTS index1 ON rolling (id, oid, _index);");
+			}
+			
 			System.out.format("Rolling database created in %dms.\n", System.currentTimeMillis() - start);
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();

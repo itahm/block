@@ -14,5 +14,9 @@ public class HRStorageMemory extends HRStorage {
 	protected String getEventTitle() {
 		return EVENT_TITLE;
 	}
-	
+
+	@Override
+	public String toString() {
+		return "HRSTORAGEMEMORY";
+	}
 }

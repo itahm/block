@@ -21,4 +21,8 @@ public class IFInErrors extends IFErrors {
 		return EVENT_TITLE;
 	}
 	
+	@Override
+	public String toString() {
+		return "IFINERRORS";
+	}
 }

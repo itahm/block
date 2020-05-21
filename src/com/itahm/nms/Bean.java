@@ -1,23 +1,22 @@
 package com.itahm.nms;
 
+import java.util.Calendar;
+
 import com.itahm.json.JSONObject;
 
 public class Bean {
 	public static class Value {
-		public long timestamp;
-		public String value;
-		public int limit;
-		public boolean critical;
+		public long timestamp = Calendar.getInstance().getTimeInMillis();
+		public String value = "";
+		public int limit = 0;
+		public boolean critical = false;
 		
-		public Value (long timestamp, String value) {
-			this(timestamp, value, 0, false);
+		public Value () {
 		}
 		
-		public Value (long timestamp, String value, int limit, boolean critical) {
+		public Value (long timestamp, String value) {
 			this.timestamp = timestamp;
 			this.value = value;
-			this.limit = limit;
-			this.critical = critical;
 		}
 	}
 	
@@ -61,7 +60,7 @@ public class Bean {
 		public final boolean critical;
 		
 		public CriticalEvent(long id, String index, String oid, boolean critical, String title) {
-			super(Event.CRITICAL, id, critical? Event.ERROR: Event.NORMAL, String.format("%s 임계 %s", title, critical? "초과": "정상"));
+			super(Event.CRITICAL, id, critical? Event.WARNING: Event.NORMAL, String.format("%s 임계 %s", title, critical? "초과": "정상"));
 			
 			this.index = index;
 			this.oid = oid;
@@ -93,6 +92,14 @@ public class Bean {
 			this.id = id;
 			this.level = level;
 			this.message = message;
+		}
+		
+		public JSONObject getJSONObject() {
+			return new JSONObject()
+				.put("origin", this.origin)
+				.put("id", this.id)
+				.put("level", this.level)
+				.put("message", this.message);
 		}
 	}
 	

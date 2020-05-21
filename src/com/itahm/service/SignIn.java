@@ -95,7 +95,7 @@ public class SignIn implements Serviceable {
 		}
 		
 		Session session = request.getSession(false);
-	
+		
 		if (session == null) {
 			if (data.getString("command").equalsIgnoreCase("SIGNIN")) {
 				try (Connection c = connPool.getConnection()) {

@@ -101,7 +101,9 @@ public class IFOutOctets implements Parseable {
 			long diff = timestamp - old.timestamp;
 			
 			if (diff > 0) {
-				return (octets - Long.valueOf(old.value)) *8000 / diff;
+				octets -= Long.valueOf(old.value);
+				
+				return octets >= 0? (octets *8000 / diff) : null;
 			}
 		}
 		
@@ -109,18 +111,18 @@ public class IFOutOctets implements Parseable {
 	}
 
 	@Override
-	public List<Max> getTop(List<Long> list, boolean byRate) {
+	public List<Max> getTop(int count, boolean byRate) {
+		final List<Long> keys = new ArrayList<>(this.publicMax.keySet());
 		List<Max> result = new ArrayList<>();
+		Max max;
 		
-		if (byRate) {
-			final Map<Long, Max> idMap = this.publicMaxRate;
-			
-			Collections.sort(list, new Comparator<Long>() {
+		if (byRate) {			
+			Collections.sort(keys, new Comparator<Long>() {
 	
 				@Override
 				public int compare(Long id1, Long id2) {
-					Max max1 = idMap.get(id1);
-					Max max2 = idMap.get(id2);
+					Max max1 = publicMaxRate.get(id1);
+					Max max2 = publicMaxRate.get(id2);
 					
 					if (max1 == null) {
 						if (max2 == null) {
@@ -143,25 +145,21 @@ public class IFOutOctets implements Parseable {
 				}
 			});
 			
-			Max max;
-			
-			for (int i=0, _i=list.size(); i<_i; i++) {
-				max = idMap.get(list.get(i));
+			for (int i=0, _i=Math.min(keys.size(), count); i<_i; i++) {
+				max = publicMaxRate.get(keys.get(i));
 				
 				if (max != null) {
 					result.add(max);
 				}
 			}
 		}
-		else {
-			final Map<Long, Max> idMap = this.publicMax;
-			
-			Collections.sort(list, new Comparator<Long>() {
+		else {			
+			Collections.sort(keys, new Comparator<Long>() {
 	
 				@Override
 				public int compare(Long id1, Long id2) {
-					Max max1 = idMap.get(id1);
-					Max max2 = idMap.get(id2);
+					Max max1 = publicMax.get(id1);
+					Max max2 = publicMax.get(id2);
 					
 					if (max1 == null) {
 						if (max2 == null) {
@@ -184,10 +182,8 @@ public class IFOutOctets implements Parseable {
 				}
 			});
 			
-			Max max;
-			
-			for (int i=0, _i=list.size(); i<_i; i++) {
-				max = idMap.get(list.get(i));
+			for (int i=0, _i=Math.min(keys.size(), count); i<_i; i++) {
+				max = publicMax.get(keys.get(i));
 				
 				if (max != null) {
 					result.add(max);
@@ -213,4 +209,8 @@ public class IFOutOctets implements Parseable {
 		this.publicMaxRate.remove(id);
 	}
 
+	@Override
+	public String toString() {
+		return "IFOUTOCTETS";
+	}
 }

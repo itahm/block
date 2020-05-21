@@ -21,4 +21,8 @@ public class IFOutErrors extends IFErrors {
 		return EVENT_TITLE;
 	}
 	
+	@Override
+	public String toString() {
+		return "IFOUTERRORS";
+	}
 }

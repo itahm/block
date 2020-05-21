@@ -15,4 +15,8 @@ public class HRStorageUsed extends HRStorage {
 		return EVENT_TITLE;
 	}
 	
+	@Override
+	public String toString() {
+		return "HRSTORAGEUSED";
+	}
 }
