@@ -42,6 +42,7 @@ public class IFInOctets implements Parseable {
 			
 			if (v != null) {
 				int index;
+				long octets;
 				
 				try {
 					index = Integer.valueOf(idx);
@@ -49,7 +50,13 @@ public class IFInOctets implements Parseable {
 					return null;
 				}
 				
-				Long bps = parseBPS(id, oldIndexMap.get(index), speed, Long.valueOf(v.value), v.timestamp);
+				try {
+					octets = Long.valueOf(v.value);
+				} catch (NumberFormatException nfe) {
+					return null;
+				}
+				
+				Long bps = parseBPS(id, oldIndexMap.get(index), speed, octets, v.timestamp);
 				
 				oldIndexMap.put(index, new Value(v.timestamp, v.value));
 				
