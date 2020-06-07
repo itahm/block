@@ -40,7 +40,7 @@ public class Session {
 		update();
 	}
 	
-	public Session update() {
+	public synchronized Session update() {		
 		if (this.task != null) {
 			this.task.cancel();
 		}
@@ -71,8 +71,12 @@ public class Session {
 		return this.attribute.get(name);
 	}
 	
-	public void invalidate() {
-		this.task.cancel();
+	synchronized public void invalidate() {
+		if (this.task != null) {
+			this.task.cancel();
+			
+			this.task = null;
+		}
 		
 		sessions.remove(id);
 	}

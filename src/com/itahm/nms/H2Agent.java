@@ -153,6 +153,8 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 		
 		connPool = JdbcConnectionPool.create(String.format("jdbc:h2:%s", path.resolve("nms").toString()), "sa", "");
 		
+		connPool.setMaxConnections(50);
+		
 		initTable();
 		initData();
 		
@@ -597,6 +599,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 
 	@Override
 	public boolean addBody(JSONObject body) {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			try (PreparedStatement pstmt = c.prepareStatement("INSERT INTO body"+
 				" (maker, name, unit, front, rear)"+
@@ -613,6 +616,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			return true;
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return false;
@@ -620,6 +627,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 	
 	@Override
 	public boolean addBranch(JSONObject branch) {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			try (PreparedStatement pstmt = c.prepareStatement("INSERT INTO branch (parent, name, address, subaddr, phone, lat, lng)"+
 				" VALUES(?, ?, ?, ?, ?, ?, ?);")) {
@@ -647,6 +655,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			return true;
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return false;
@@ -654,6 +666,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 		
 	@Override
 	public JSONObject addIcon(String type, JSONObject icon) {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			try (PreparedStatement pstmt = c.prepareStatement("INSERT INTO icon"+
 				" (type, _group, src, disabled, shutdown)"+
@@ -670,6 +683,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			return icon;
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return null;
@@ -681,6 +698,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			return false;
 		}
 		
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {			
 			synchronized(this.nextLinkID) {
 				try (PreparedStatement pstmt = c.prepareStatement("INSERT INTO link (id, node_from, node_to) values (?, ?, ?);")) {
@@ -697,6 +715,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			return true;
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return false;
@@ -704,6 +726,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 
 	@Override
 	public JSONObject addNode(JSONObject node) {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			c.setAutoCommit(false);
 			
@@ -794,6 +817,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			}
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return null;
@@ -805,6 +832,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			return false;
 		}
 		
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			try (PreparedStatement pstmt = c.prepareStatement("INSERT INTO path (node_from, node_to) values (?, ?);")) {
 				pstmt.setLong(1, nodeFrom);
@@ -816,6 +844,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			return true;
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return false;
@@ -823,6 +855,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 
 	@Override
 	public boolean addProfile(String name, JSONObject profile) {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			try (PreparedStatement pstmt = c.prepareStatement("INSERT INTO profile"+
 				" (name, protocol, port, version, security, auth_protocol, auth_key, priv_protocol, priv_key)"+
@@ -843,6 +876,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			return true;
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return false;
@@ -850,6 +887,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 
 	@Override
 	public boolean addRack(JSONObject rack) {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			try (PreparedStatement pstmt = c.prepareStatement("INSERT INTO rack"+
 				" (name, unit)"+
@@ -863,6 +901,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			return true;
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return false;
@@ -870,6 +912,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 	
 	@Override
 	public boolean addUser(String name, JSONObject user) {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			try (PreparedStatement pstmt = c.prepareStatement("INSERT INTO user (name, email, sms)"+
 				" VALUES(?, ?, ?);")) {
@@ -883,6 +926,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			return true;
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return false;
@@ -890,9 +937,14 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 
 	@Override
 	public void backup() throws Exception {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			try (Statement stmt = c.createStatement()) {
 				stmt.executeUpdate(String.format("BACKUP TO '%s';", this.root.resolve("backup.zip")));
+			}
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
 			}
 		}
 	}
@@ -904,6 +956,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 
 	@Override
 	public JSONObject getBranch() {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			try (Statement stmt = c.createStatement()) {
 				JSONObject
@@ -943,6 +996,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			}
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return null;
@@ -950,6 +1007,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 	
 	@Override
 	public JSONObject getBody() {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			try (Statement stmt = c.createStatement()) {
 				
@@ -973,6 +1031,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			}
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return null;
@@ -980,6 +1042,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 	
 	@Override
 	public JSONObject getBody(long id) {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			try (PreparedStatement pstmt = c.prepareStatement("SELECT"+
 				" maker, name, unit, front, rear"+
@@ -1001,6 +1064,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			}
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return null;
@@ -1008,6 +1075,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 	
 	@Override
 	public JSONObject getBranch(long id) {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			try (PreparedStatement pstmt = c.prepareStatement("SELECT name, address, subaddr, phone, lat, lng"+
 				" FROM branch"+
@@ -1046,6 +1114,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			}
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return null;
@@ -1072,7 +1144,8 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 	
 	@Override
 	public JSONObject getEvent(long eventID) {
-		try (Connection c =  this.connPool.getConnection()) {
+		long ttt = System.currentTimeMillis();
+		try (Connection c = this.connPool.getConnection()) {
 			try (PreparedStatement pstmt = c.prepareStatement("SELECT e.id, timestamp, origin, level, message, name, ip"+
 				" FROM event AS e"+
 				" LEFT JOIN node AS n"+
@@ -1111,6 +1184,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			} 
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return null;
@@ -1143,6 +1220,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 		String level = al.size() == 3?
 			"TRUE": String.format("level IN(%s)", String.join(",", al));
 		
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			try (PreparedStatement pstmt = c.prepareStatement(
 				String.format(
@@ -1189,6 +1267,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			} 
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return null;
@@ -1205,6 +1287,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 		calendar.set(Calendar.SECOND, 0);
 		calendar.set(Calendar.MILLISECOND, 0);
 	
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			try (PreparedStatement pstmt = c.prepareStatement("SELECT e.id, timestamp, origin, level, message, event_id, name, ip"+
 				" FROM EVENT AS e"+
@@ -1248,6 +1331,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			} 
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return null;
@@ -1255,6 +1342,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 
 	@Override
 	public JSONObject getIcon() {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			try (Statement stmt = c.createStatement()) {
 				JSONObject iconData = new JSONObject();
@@ -1275,6 +1363,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			}
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return null;
@@ -1282,6 +1374,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 
 	@Override
 	public JSONObject getIcon(String type) {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			try (PreparedStatement pstmt = c.prepareStatement("SELECT type, _group, src, disabled, shutdown"+
 				" FROM icon"+
@@ -1301,6 +1394,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			}
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return null;
@@ -1318,7 +1415,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 					c.get(Calendar.YEAR),
 					c.get(Calendar.MONTH) +1,
 					c.get(Calendar.DAY_OF_MONTH)))));
-		} catch (Exception e) {
+			} catch (Exception e) {
 		}
 		
 		body.put("maxConnection", this.connPool.getActiveConnections());
@@ -1341,6 +1438,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 
 	@Override
 	public JSONObject getLink() {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			try (Statement stmt = c.createStatement()) {
 				JSONObject
@@ -1382,6 +1480,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			}
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return null;
@@ -1389,6 +1491,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 
 	@Override
 	public JSONObject getLink(long nodeFrom, long nodeTo) {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			try (PreparedStatement pstmt = c.prepareStatement("SELECT"+
 				" id, node_from, node_to, index_from, index_from_name, index_to, index_to_name, extra"+
@@ -1437,6 +1540,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			}
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return null;
@@ -1444,6 +1551,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 
 	@Override
 	public JSONObject getLocation() {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			try (Statement stmt = c.createStatement()) {
 				try (ResultSet rs = stmt.executeQuery("SELECT"+
@@ -1483,6 +1591,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			}
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return null;
@@ -1490,6 +1602,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 	
 	@Override
 	public JSONObject getLocation(long node) {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			try (PreparedStatement pstmt = c.prepareStatement("SELECT"+
 				" maker, l.name, rack, position, n.name, ip"+
@@ -1529,6 +1642,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			}
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return null;
@@ -1536,6 +1653,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 	
 	@Override
 	public JSONObject getNode(String filter) {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			JSONObject nodeData = new JSONObject();
 			String query = String.format("SELECT n.id, n.name, n.type, n.ip, label, m.protocol, m.status, l.node"+
@@ -1624,6 +1742,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			return nodeData;
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return null;
@@ -1634,6 +1756,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 		JSONObject node = new JSONObject();
 		boolean status;
 		
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			try (PreparedStatement pstmt = c.prepareStatement("SELECT n.id, name, type, n.ip, label, m.protocol, m.status"+
 				" FROM node AS n"+
@@ -1748,6 +1871,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			return node;
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return null;
@@ -1755,6 +1882,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 	
 	@Override
 	public JSONObject getPath() {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			try (Statement stmt = c.createStatement()) {
 				JSONObject
@@ -1793,6 +1921,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			}
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return null;
@@ -1800,6 +1932,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 
 	@Override
 	public JSONObject getPath(long nodeFrom, long nodeTo) {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			try (PreparedStatement pstmt = c.prepareStatement("SELECT type, color, COALESCE(size, 0)"+
 				" FROM path"+
@@ -1832,12 +1965,18 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			}
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
-			return null;
+		
+		return null;
 	}
 
 	@Override
 	public JSONObject getPosition(String name) {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			try (PreparedStatement pstmt = c.prepareStatement("SELECT position FROM position"+
 				" WHERE name=?;")) {
@@ -1851,6 +1990,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			} 
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return null;
@@ -1858,6 +2001,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 
 	@Override
 	public JSONObject getProfile() {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			try (Statement stmt = c.createStatement()) {
 				JSONObject
@@ -1902,6 +2046,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			}
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return null;
@@ -1909,9 +2057,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 
 	@Override
 	public JSONObject getProfile(String name) {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			try (PreparedStatement pstmt = c.prepareStatement("SELECT protocol, port, version, security, COALESCE(level, 0), auth_protocol, auth_key, priv_protocol, priv_key"+ 
-				" FOM profile"+
+				" FROM profile"+
 				" WHERE name=?;")) {
 				pstmt.setString(1, name);
 				
@@ -1950,6 +2099,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			}
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return null;
@@ -1957,6 +2110,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 	
 	@Override
 	public JSONObject getRack() {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			try (Statement stmt = c.createStatement()) {				
 				try (ResultSet rs = stmt.executeQuery("SELECT"+
@@ -1978,6 +2132,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			}
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return null;
@@ -1985,6 +2143,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 	
 	@Override
 	public JSONObject getRack(int id) {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			try (PreparedStatement pstmt = c.prepareStatement("SELECT"+
 				" name, x, y, unit"+ 
@@ -2005,6 +2164,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			}
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return null;
@@ -2079,6 +2242,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 	
 	@Override
 	public JSONObject getSetting() {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			try (Statement stmt = c.createStatement()) {
 				JSONObject settingData = new JSONObject();
@@ -2093,6 +2257,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			}
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return null;
@@ -2100,6 +2268,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 
 	@Override
 	public JSONObject getSetting(String key) {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			try (PreparedStatement pstmt = c.prepareStatement("SELECT value FROM setting"+
 				" WHERE key=?;")) {
@@ -2113,6 +2282,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			}
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return null;
@@ -2161,6 +2334,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 
 	@Override
 	public JSONObject getUser() {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			try (Statement stmt = c.createStatement()) {
 				JSONObject userData = new JSONObject();
@@ -2179,6 +2353,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			}
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return null;
@@ -2186,6 +2364,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 
 	@Override
 	public JSONObject getUser(String name) {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			try (PreparedStatement pstmt = c.prepareStatement("SELECT name, email, sms"+
 				" FROM user"+
@@ -2203,6 +2382,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			}
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return null;
@@ -2508,6 +2691,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 	}
 	
 	private void onSearchEvent(String ip, String profile) {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			synchronized(this.nextNodeID) {
 				long id;
@@ -2542,10 +2726,15 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			}
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 	}
 	
 	private boolean registerSNMPNode(long id, String ip, String name) {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			if (this.statusMap.containsKey(id)) {
 				if (this.snmpMap.containsKey(id)) {
@@ -2597,12 +2786,17 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			return true;
 		} catch (Exception sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return false;
 	}
 	
 	private boolean registerICMPNode(long id, String ip) {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			if (this.statusMap.containsKey(id)) { // SNMPNode or ICMPNode
 				if (this.snmpMap.containsKey(id)) { // SNMPNode
@@ -2641,6 +2835,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			return true;
 		} catch (Exception sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return false;
@@ -2651,6 +2849,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			return false;
 		}
 		
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			try (PreparedStatement pstmt = c.prepareStatement("INSERT INTO monitor (id, ip, protocol)"+
 				" VALUES (?, ?, 'tcp');")) {
@@ -2667,6 +2866,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			return true;
 		} catch (Exception e) {
 			e.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return false;
@@ -2674,6 +2877,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 	
 	@Override
 	public boolean removeBody(long id) {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			try (PreparedStatement pstmt = c.prepareStatement("DELETE"+
 				" FROM body"+
@@ -2686,6 +2890,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			return true;
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return false;
@@ -2693,6 +2901,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 	
 	@Override
 	public boolean removeBranch(long id) {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			try (PreparedStatement pstmt = c.prepareStatement("DELETE"+
 				" FROM branch"+
@@ -2705,6 +2914,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			return true;
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return false;
@@ -2712,6 +2925,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 	
 	@Override
 	public boolean removeIcon(String type) {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			try (PreparedStatement pstmt = c.prepareStatement("DELETE"+
 				" FROM icon"+
@@ -2724,6 +2938,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			}
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return false;
@@ -2731,6 +2949,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 
 	@Override
 	public boolean removeLink(long id) {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			try (PreparedStatement pstmt = c.prepareStatement("DELETE"+
 				" FROM link"+
@@ -2743,6 +2962,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			return true;
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return false;
@@ -2750,6 +2973,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 
 	@Override
 	public boolean removeLocation(long node) {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			try (PreparedStatement pstmt = c.prepareStatement("DELETE"+
 				" FROM location"+
@@ -2762,6 +2986,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			return true;
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return false;
@@ -2769,6 +2997,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 	
 	@Override
 	public boolean removeNode(long id) {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			c.setAutoCommit(false);
 			
@@ -2842,6 +3071,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			}
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return false;
@@ -2849,6 +3082,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 
 	@Override
 	public boolean removePath(long nodeFrom, long nodeTo) {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			c.setAutoCommit(false);
 			
@@ -2881,6 +3115,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			}
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return false;
@@ -2888,6 +3126,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 
 	@Override
 	public boolean removeProfile(String name) {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			c.setAutoCommit(false);
 		
@@ -2923,6 +3162,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			}
 		} catch (SQLException sqle) {
 				sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return false;
@@ -2930,18 +3173,41 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 
 	@Override
 	public boolean removeRack(int id) {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
-			try (PreparedStatement pstmt = c.prepareStatement("DELETE"+
-				" FROM rack"+
-				" WHERE id=?;")) {
-				pstmt.setInt(1, id);
-				
-				pstmt.executeUpdate();
-			}
+			c.setAutoCommit(false);
 			
-			return true;
+			try {			
+				try (PreparedStatement pstmt = c.prepareStatement("DELETE"+
+					" FROM rack"+
+					" WHERE id=?;")) {
+					pstmt.setInt(1, id);
+					
+					pstmt.executeUpdate();
+				}
+				
+				try (PreparedStatement pstmt = c.prepareStatement("DELETE"+
+					" FROM location"+
+					" WHERE rack=?;")) {
+					pstmt.setInt(1, id);
+					
+					pstmt.executeUpdate();
+				}
+				
+				c.commit();
+				
+				return true;
+			} catch (SQLException sqle) {
+				c.rollback();
+				
+				throw sqle;
+			}
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return false;
@@ -2949,17 +3215,16 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 	
 	@Override
 	public boolean removeResource(long id, String index, String oid) {
-		try {
-			try(Connection c = this.connPool.getConnection()) {
-				try (PreparedStatement pstmt = c.prepareStatement("DELETE"+
-					" FROM bandwidth"+
-					" WHERE id=? AND _index=? AND oid=?;")) {
-					pstmt.setLong(1, id);
-					pstmt.setString(2, index);
-					pstmt.setString(3, oid);
-					
-					pstmt.executeUpdate();
-				}
+		long ttt = System.currentTimeMillis();
+		try (Connection c = this.connPool.getConnection()) {
+			try (PreparedStatement pstmt = c.prepareStatement("DELETE"+
+				" FROM bandwidth"+
+				" WHERE id=? AND _index=? AND oid=?;")) {
+				pstmt.setLong(1, id);
+				pstmt.setString(2, index);
+				pstmt.setString(3, oid);
+				
+				pstmt.executeUpdate();
 			}
 			
 			Map<String, Map<String, Value>> indexMap = this.resourceMap.get(id);
@@ -2975,6 +3240,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			return true;
 		} catch(SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return false;
@@ -2982,6 +3251,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 	
 	@Override
 	public boolean removeUser(String name) {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			try (PreparedStatement pstmt = c.prepareStatement("DELETE"+
 				" FROM user"+
@@ -2994,6 +3264,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			return true;
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return false;
@@ -3118,6 +3392,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 	
 	@Override
 	public boolean setBody(long id, JSONObject body) {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			try (PreparedStatement pstmt = c.prepareStatement("UPDATE body"+
 				" SET maker=?, name=?, unit=?, front=?, rear=?"+
@@ -3134,6 +3409,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			return true;
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return false;
@@ -3141,6 +3420,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 	
 	@Override
 	public boolean setBranch(long id, JSONObject branch) {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			try (PreparedStatement pstmt = c.prepareStatement("UPDATE branch"+
 				" SET parent=?, name=?, address=?, subaddr=?, phone=?, lat=?, lng=?"+
@@ -3171,6 +3451,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			return true;
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return false;
@@ -3178,7 +3462,8 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 
 	@Override
 	public boolean setCritical(long id, String index, String oid, int limit) {
-		try(Connection c = this.connPool.getConnection()) {
+		long ttt = System.currentTimeMillis();
+		try (Connection c = this.connPool.getConnection()) {
 			if (limit > 0) {
 				try (PreparedStatement pstmt = c.prepareStatement("MERGE INTO critical"+
 					" (id, oid, _index, critical)"+
@@ -3207,25 +3492,30 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			return true;
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return false;
 	}
 
 	@Override
-	public boolean setIcon(String id, JSONObject icon) {
+	public boolean setIcon(String type, JSONObject icon) {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			try (PreparedStatement pstmt = c.prepareStatement("UPDATE icon SET"+
 				" _group=?,"+
 				" src=?,"+
-				" disabled=?"+
+				" disabled=?,"+
 				" shutdown=?"+
 				" WHERE type=?;")) {
 				pstmt.setString(1, icon.getString("group"));
 				pstmt.setString(2, icon.getString("src"));
 				pstmt.setString(3, icon.getString("disabled"));
 				pstmt.setString(4, icon.getString("shutdown"));
-				pstmt.setString(5, icon.getString("type"));
+				pstmt.setString(5, type);
 				
 				pstmt.executeUpdate();
 			}
@@ -3233,6 +3523,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			return true;
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return false;
@@ -3240,6 +3534,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 
 	@Override
 	public boolean setLink(long nodeFrom, long nodeTo, JSONObject link) {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			try (PreparedStatement pstmt = c.prepareStatement("UPDATE link SET"+
 					" index_from=?"+
@@ -3287,6 +3582,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			}
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return false;
@@ -3294,6 +3593,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 
 	@Override
 	public boolean setLocation(long node, JSONObject location) {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			try (PreparedStatement pstmt = c.prepareStatement("MERGE INTO location"+
 				" (node, maker, name, rack, position)"+
@@ -3311,6 +3611,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			return true;
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return false;
@@ -3319,6 +3623,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 	@Override
 	public boolean setMonitor(long id, String ip, String protocol) {
 		if (protocol == null) {
+			long ttt = System.currentTimeMillis();
 			try (Connection c = this.connPool.getConnection()) {
 				try (PreparedStatement pstmt = c.prepareStatement("DELETE"+
 					" FROM monitor"+
@@ -3336,6 +3641,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 				sqle.printStackTrace();
 				
 				return false;
+			} finally {
+				if (System.currentTimeMillis() - ttt > 30000) {
+					new Exception().printStackTrace();
+				}
 			}
 		} else {
 			JSONObject
@@ -3381,6 +3690,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 
 	@Override
 	public boolean setNode(long id, JSONObject node) {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			c.setAutoCommit(false);
 			
@@ -3466,6 +3776,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			}
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return false;
@@ -3473,6 +3787,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 
 	@Override
 	public boolean setPath(long nodeFrom, long nodeTo, JSONObject path) {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			try (PreparedStatement pstmt = c.prepareStatement("UPDATE path"+
 				" SET type=?, color=?, size=?"+
@@ -3507,6 +3822,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			}
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return false;
@@ -3514,6 +3833,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 
 	@Override
 	public boolean setPosition(String name, JSONObject position) {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			try (PreparedStatement pstmt = c.prepareStatement("MERGE INTO position"+
 				" (name, position)"+
@@ -3528,12 +3848,18 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			return true;
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
+		
 		return false;
 	}
 	
 	@Override
 	public boolean setRack(int id, JSONObject rack) {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			try (PreparedStatement pstmt = c.prepareStatement("UPDATE rack"+
 				" SET name=?, x=?, y=?, unit=?"+
@@ -3551,6 +3877,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
 
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return false;
@@ -3558,6 +3888,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 
 	@Override
 	public boolean setRack(JSONObject rackData) {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			try (PreparedStatement pstmt = c.prepareStatement("MERGE INTO rack"+
 				" (id, name, x, y, unit)"+
@@ -3580,7 +3911,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			return true;
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
-
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return false;
@@ -3588,6 +3922,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 	
 	@Override
 	public boolean setRetry(int retry) {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			try (PreparedStatement pstmt = c.prepareStatement("MERGE INTO config"+
 				" (key, value)"+
@@ -3605,6 +3940,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			return true;
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return false;
@@ -3612,6 +3951,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 
 	@Override
 	public boolean setRequestInterval(long interval) {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			try (PreparedStatement pstmt = c.prepareStatement("MERGE INTO config"+
 				" (key, value)"+
@@ -3629,7 +3969,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			return true;
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
-
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return false;
@@ -3637,6 +3980,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 
 	@Override
 	public boolean setSaveInterval(int interval) {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			try (PreparedStatement pstmt = c.prepareStatement("MERGE INTO config"+
 				" (key, value)"+
@@ -3654,6 +3998,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			return true;
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return false;
@@ -3661,6 +4009,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 
 	@Override
 	public boolean setSetting(String key, String value) {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			try (PreparedStatement pstmt = c.prepareStatement("MERGE INTO setting"+
 				" (key, value)"+
@@ -3682,6 +4031,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			return true;
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return false;
@@ -3689,6 +4042,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 
 	@Override
 	public boolean setSMTP(JSONObject smtp) {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			if (smtp == null) {
 				try (Statement stmt = c.createStatement()){
@@ -3732,6 +4086,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			return true;
 		} catch (SQLException sqle) {					
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return false;
@@ -3739,19 +4097,18 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 
 	@Override
 	public boolean setResource(long id, String index, String oid, String value) {
-		try {
-			try(Connection c = this.connPool.getConnection()) {
-				try (PreparedStatement pstmt = c.prepareStatement("MERGE INTO bandwidth"+
-					" (id, oid, _index, value)"+
-					" KEY(id, oid, _index)"+
-					" VALUES(?, ?, ?, ?);")) {
-					pstmt.setLong(1, id);
-					pstmt.setString(2, oid);
-					pstmt.setString(3, index);
-					pstmt.setString(4, value);
-					
-					pstmt.executeUpdate();
-				}
+		long ttt = System.currentTimeMillis();
+		try (Connection c = this.connPool.getConnection()) {
+			try (PreparedStatement pstmt = c.prepareStatement("MERGE INTO bandwidth"+
+				" (id, oid, _index, value)"+
+				" KEY(id, oid, _index)"+
+				" VALUES(?, ?, ?, ?);")) {
+				pstmt.setLong(1, id);
+				pstmt.setString(2, oid);
+				pstmt.setString(3, index);
+				pstmt.setString(4, value);
+				
+				pstmt.executeUpdate();
 			}
 			
 			getResourceValue(id, index, oid).value = value;
@@ -3759,6 +4116,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			return true;
 		} catch(SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return false;
@@ -3766,6 +4127,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 
 	@Override
 	public boolean setStoreDate(int period) {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			try (PreparedStatement pstmt = c.prepareStatement("MERGE INTO config"+
 				" (key, value)"+
@@ -3783,6 +4145,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			return true;
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return false;
@@ -3790,6 +4156,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 
 	@Override
 	public boolean setTimeout(int timeout) {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			try (PreparedStatement pstmt = c.prepareStatement("MERGE INTO config"+
 				" (key, value)"+
@@ -3807,6 +4174,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			return true;
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return false;
@@ -3814,6 +4185,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 
 	@Override
 	public boolean setUser(String id, JSONObject user) {
+		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			try (PreparedStatement pstmt = c.prepareStatement("UPDATE user"+
 				" SET email=?, sms=?"+
@@ -3838,6 +4210,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			return true;
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 		
 		return false;
@@ -3845,7 +4221,8 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 	
 	@Override
 	public void start() {
-		try(Connection c = this.connPool.getConnection()) {
+		long ttt = System.currentTimeMillis();
+		try (Connection c = this.connPool.getConnection()) {
 			try (Statement stmt = c.createStatement()) {
 				try (ResultSet rs = stmt.executeQuery("SELECT security, level, auth_protocol, auth_key, priv_protocol, priv_key"+
 					" FROM profile"+
@@ -3907,6 +4284,10 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			}
 		} catch (SQLException sqle) {
 			sqle.printStackTrace();
+		} finally {
+			if (System.currentTimeMillis() - ttt > 30000) {
+				new Exception().printStackTrace();
+			}
 		}
 	}
 }

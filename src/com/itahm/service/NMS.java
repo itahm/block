@@ -686,7 +686,9 @@ public class NMS implements Serviceable, Listener {
 		case "POSITION":
 			return this.agent.getPosition(request.has("name")? request.getString("name"): "position");
 		case "PROFILE":
-			return this.agent.getProfile();
+			return request.has("name")?
+				this.agent.getProfile(request.getString("name")):
+					this.agent.getProfile();
 		case "RACK":
 			return request.has("id")?
 				this.agent.getRack(request.getInt("id")):
@@ -706,7 +708,9 @@ public class NMS implements Serviceable, Listener {
 		case "TRAFFIC":
 			return this.agent.getTraffic(request.getJSONObject("traffic"));
 		case "USER":
-			return this.agent.getUser();
+			return request.has("name")?
+				this.agent.getUser(request.getString("name")):
+				this.agent.getUser();
 		default:
 			
 			throw new JSONException("Target is not found.");
