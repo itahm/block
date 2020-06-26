@@ -36,8 +36,8 @@ public class HTTPProcessor extends Thread {
 			if (origin != null) {
 				response.setHeader("Access-Control-Allow-Credentials", "true");
 				response.setHeader("Access-Control-Allow-Origin", origin);
-				response.setHeader("Access-Control-Allow-Methods","POST, GET, OPTIONS");
-				response.setHeader("Access-Control-Allow-Headers", "Session");
+				response.setHeader("Access-Control-Allow-Methods","POST, GET, PUT, OPTIONS");
+				response.setHeader("Access-Control-Allow-Headers", "Session, File-Target, File-Id");
 			}
 			
 			break;
@@ -48,6 +48,15 @@ public class HTTPProcessor extends Thread {
 			}
 			
 			this.server.doPost(this.request, response);
+			
+			break;
+		case "PUT":
+			if (origin != null) {
+				response.setHeader("Access-Control-Allow-Credentials", "true");
+				response.setHeader("Access-Control-Allow-Origin", origin);
+			}
+			
+			this.server.doPut(this.request, response);
 			
 			break;
 		default:
