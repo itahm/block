@@ -5,109 +5,34 @@ import java.io.UnsupportedEncodingException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Calendar;
-import java.util.Date;
-import java.util.Timer;
-import java.util.TimerTask;
 
 import com.itahm.http.Request;
 import com.itahm.http.Response;
 import com.itahm.json.JSONException;
 import com.itahm.json.JSONObject;
-import com.itahm.lang.KR;
 import com.itahm.nms.Commander;
 import com.itahm.nms.H2Agent;
 import com.itahm.smtp.SMTP;
 import com.itahm.util.Listener;
-import com.itahm.util.Util;
 
 public class NMS implements Serviceable, Listener {
 
+	/*********************************************************/
+	public static long EXPIRE = -1L;
+	public static long LIMIT = 0L;
 	private final static String VERSION = "CeMS v1.0";
+	/*********************************************************/
+	
 	private Commander agent;
 	private final SMTP smtpServer = new SMTP();
 	private final Path root;
-	private final long expire;
-	private final int limit;
 	private Boolean isClosed = true;
 	private byte [] event = null;
 	
-	public NMS(Builder builder) throws Exception {
-		root = builder.root;
-		expire = builder.expire;
-		limit = builder.limit;
-		
-		if (expire > 0) {
-			Calendar c = Calendar.getInstance();
-			
-			if (expire < c.getTimeInMillis()) {
-				throw new Exception("Expired License.");
-			}
-			
-			c.setTimeInMillis(expire);
-			
-			System.out.format("License expires on %s.\n", new SimpleDateFormat("MMM dd, yyyy").format(c.getTime()));
-			
-			new Timer("Expire Scheduler").schedule(new TimerTask() {
-
-				@Override
-				public void run() {
-					try {
-						// TODO
-						System.out.println(KR.ERROR_LICENSE_EXPIRE);
-						
-						agent.close();
-					} catch (IOException ioe) {
-						ioe.printStackTrace();
-					}
-					
-				}}, new Date(expire));
-		}
+	public NMS(Path path) throws Exception {
+		root = path;
 	}
-	
-	public static class Builder {
-		private final Path root;
-		private boolean licensed = true;
-		private long expire = 0;
-		private int limit = 0;
-		
-		public Builder (Path root) {
-			this.root = root;
-		}
-		
-		public Builder license(String mac) {
-			if (!Util.isValidAddress(mac)) {
-				System.out.println(KR.ERROR_LICENSE_MAC);
-				
-				licensed = false;
-			}
-			
-			return this;
-		}
-		
-		public Builder expire(long expire) {
-			this.expire = expire;
-			
-			return this;
-		}
-		
-		public Builder limit(int limit) {
-			this.limit = limit;
-			
-			return this;
-		}
-		
-		public NMS build() throws Exception {
-			if (!this.licensed) {
-				return null;
-			}
-			
-			return new NMS(this);
-		}
-	}
-	
 
 	@Override
 	public void start() {
@@ -117,7 +42,7 @@ public class NMS implements Serviceable, Listener {
 			}
 			
 			try {
-				this.agent = new H2Agent(this, this.root, this.limit);
+				this.agent = new H2Agent(this, this.root);
 			
 				JSONObject config = this.agent.getConfig();
 				
@@ -656,7 +581,7 @@ public class NMS implements Serviceable, Listener {
 			result
 				.put("version", VERSION)
 				.put("java", System.getProperty("java.version"))
-				.put("expire", this.expire)
+				.put("expire", EXPIRE)
 				.put("path", this.root.toString());
 			try {
 				result.put("space", Files.getFileStore(this.root).getUsableSpace());

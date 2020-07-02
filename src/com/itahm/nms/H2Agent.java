@@ -140,10 +140,6 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 	}
 	
 	public H2Agent (Listener listener, Path path) throws Exception {
-		this(listener, path, 0);
-	}
-	
-	public H2Agent (Listener listener, Path path, int limit) throws Exception {
 		System.out.println("Commander ***Agent v1.0***");
 		
 		System.out.format("Directory: %s\n", path.toString());
@@ -162,7 +158,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 		
 		batch.schedule(config.saveInterval);
 		
-		nodeManager = new NodeManager(this, config.requestInterval, config.timeout, config.retry, limit);
+		nodeManager = new NodeManager(this, config.requestInterval, config.timeout, config.retry);
 		
 		System.out.println("Agent start.");
 	}
@@ -2767,7 +2763,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 					pstmt.executeUpdate();
 				}	
 			}
-					
+			
 			try (PreparedStatement pstmt = c.prepareStatement("SELECT port, version, security, COALESCE(level, 0)"+
 				" FROM profile"+
 				" WHERE name=?;")) {
@@ -2775,17 +2771,21 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 				
 				try (ResultSet rs = pstmt.executeQuery()) {
 					if (rs.next()) {
-						this.nodeManager.createNode(id, ip, rs.getInt(1), rs.getString(2), rs.getString(3), rs.getInt(4));
+						this.nodeManager.createSNMPNode(id, ip,
+							rs.getInt(1),
+							rs.getString(2),
+							rs.getString(3),
+							rs.getInt(4));
+						
+						this.statusMap.put(id, true);
+						this.snmpMap.put(id, 0);
+						
+						return true;
 					}
 				}			
 			}
-				
-			this.statusMap.put(id, true);
-			this.snmpMap.put(id, 0);
-			
-			return true;
-		} catch (Exception sqle) {
-			sqle.printStackTrace();
+		} catch (Exception e) {
+			e.printStackTrace();
 		} finally {
 			if (System.currentTimeMillis() - ttt > 30000) {
 				new Exception().printStackTrace();
@@ -2818,23 +2818,33 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 				}
 			}
 			else {
-				// insert monitor
-				try (PreparedStatement pstmt = c.prepareStatement("INSERT INTO monitor (id, ip, protocol)"+
-					" VALUES (?, ?, 'icmp');")) {
-					pstmt.setLong(1, id);
-					pstmt.setString(2, ip);
+				try {
+					c.setAutoCommit(false);
 					
-					pstmt.executeUpdate();
-				}	
+					// insert monitor
+					try (PreparedStatement pstmt = c.prepareStatement("INSERT INTO monitor (id, ip, protocol)"+
+						" VALUES (?, ?, 'icmp');")) {
+						pstmt.setLong(1, id);
+						pstmt.setString(2, ip);
+						
+						pstmt.executeUpdate();
+						
+						this.nodeManager.createSimpleNode(id, ip, "icmp");
+							
+						this.statusMap.put(id, true);
+					}
+					
+					c.commit();
+					
+					return true;
+				} catch (Exception e) {
+					c.rollback();
+					
+					throw e;
+				}
 			}
-			
-			this.nodeManager.createNode(id, ip, "icmp");
-			
-			this.statusMap.put(id, true);
-			
-			return true;
-		} catch (Exception sqle) {
-			sqle.printStackTrace();
+		} catch (Exception e) {
+			e.printStackTrace();
 		} finally {
 			if (System.currentTimeMillis() - ttt > 30000) {
 				new Exception().printStackTrace();
@@ -2851,19 +2861,28 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 		
 		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
-			try (PreparedStatement pstmt = c.prepareStatement("INSERT INTO monitor (id, ip, protocol)"+
-				" VALUES (?, ?, 'tcp');")) {
-				pstmt.setLong(1, id);
-				pstmt.setString(2, ip);
+			try {
+				c.setAutoCommit(false);
+			
+				try (PreparedStatement pstmt = c.prepareStatement("INSERT INTO monitor (id, ip, protocol)"+
+					" VALUES (?, ?, 'tcp');")) {
+					pstmt.setLong(1, id);
+					pstmt.setString(2, ip);
+					
+					pstmt.executeUpdate();
+				}
+			
+				this.nodeManager.createSimpleNode(id, ip, "tcp");
+				this.statusMap.put(id, true);
 				
-				pstmt.executeUpdate();
+				c.commit();
+				
+				return true;
+			} catch (Exception e) {
+				c.rollback();
+				
+				throw e;
 			}
-			
-			this.nodeManager.createNode(id, ip, "tcp");
-			
-			this.statusMap.put(id, true);
-			
-			return true;
 		} catch (Exception e) {
 			e.printStackTrace();
 		} finally {
@@ -4255,21 +4274,21 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 							switch(rs.getString(3).toUpperCase()) {
 							case "ICMP":
 							case "TCP":
-								this.nodeManager.createNode(
-										id,
-										rs.getString(2),
-										rs.getString(3));                                                                             
+								this.nodeManager.createSimpleNode(
+									id,
+									rs.getString(2),
+									rs.getString(3));
 								
 								break;
 							default:
-								this.nodeManager.createNode(
+								this.nodeManager.createSNMPNode(
 									id,
 									rs.getString(2),
 									rs.getInt(4),
 									rs.getString(5),
 									rs.getString(6),
 									rs.getInt(7));
-								
+									
 								this.snmpMap.put(id, rs.getInt(9));
 							}
 						} catch (IOException ioe) {

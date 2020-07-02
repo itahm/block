@@ -31,19 +31,19 @@ import com.itahm.nms.node.SeedNode;
 import com.itahm.nms.node.TCPNode;
 import com.itahm.nms.node.SeedNode.Arguments;
 import com.itahm.nms.node.SeedNode.Protocol;
+import com.itahm.service.NMS;
 import com.itahm.util.Listener;
 
 public class NodeManager extends Snmp implements Listener, Closeable {
 	
 	private final NodeEventReceivable agent;
 	private final Map<Long, Node> nodeMap = new ConcurrentHashMap<>();
-	private final int nodeLimitCount;
 	private Boolean isClosed = false;
 	private long interval;
 	private int retry;
 	private int timeout;
 	
-	public NodeManager(NodeEventReceivable agent, long interval, int timeout, int retry, int limit) throws IOException {
+	public NodeManager(NodeEventReceivable agent, long interval, int timeout, int retry) throws IOException {
 		super(new DefaultUdpTransportMapping());
 		
 		this.agent = agent;
@@ -51,7 +51,6 @@ public class NodeManager extends Snmp implements Listener, Closeable {
 		this.interval = interval;
 		this.retry = retry;
 		this.timeout = timeout;
-		nodeLimitCount = limit;
 		
 		SecurityModels.getInstance()
 			.addSecurityModel(new USM(SecurityProtocols.getInstance(), new OctetString(MPv3.createLocalEngineID()), 0));
@@ -115,9 +114,9 @@ public class NodeManager extends Snmp implements Listener, Closeable {
 		System.out.println("NodeManager down.");
 	}
 	
-	private void createNode(long id, Node node) {
-		if (this.nodeLimitCount > 0 && this.nodeMap.size() >= this.nodeLimitCount) {
-			return;
+	private void createNode(long id, Node node) throws IOException {
+		if (NMS.LIMIT > 0 && this.nodeMap.size() >= NMS.LIMIT) {
+			throw new IOException(String.format("Your license [%d] is limited", NMS.LIMIT));
 		}
 		
 		this.nodeMap.put(id, node);
@@ -140,16 +139,12 @@ public class NodeManager extends Snmp implements Listener, Closeable {
 	 * @param level
 	 * @throws IOException
 	 */
-	public void createNode(long id, String ip, int port, String version, String security, int level) throws IOException {
+	public void createSNMPNode(long id, String ip, int port, String version, String security, int level) throws IOException {
 		switch(version) {
 		case "v3":
 			createNode(id, new SNMPV3Node(this, id, ip, port, security, level));
-			
-			break;
 		case "v2c":
 			createNode(id, new SNMPDefaultNode(this, id, ip, port, security, SnmpConstants.version2c));
-			
-			break;
 		default:
 			createNode(id, new SNMPDefaultNode(this, id, ip, port, security, SnmpConstants.version1));
 		}
@@ -162,16 +157,14 @@ public class NodeManager extends Snmp implements Listener, Closeable {
 	 * @param protocol
 	 * @throws IOException
 	 */
-	public void createNode(long id, String ip, String protocol) throws IOException {
+	public void createSimpleNode(long id, String ip, String protocol) throws IOException {
 		switch (protocol.toUpperCase()) {
 		case "ICMP":
 			createNode(id, new ICMPNode(id, ip));
-			
-			break;
 		case "TCP":
 			createNode(id, new TCPNode(id, ip));
-			
-			break;
+		default:
+			throw new IOException(String.format("Not supported protocol [%s]", protocol));
 		}
 	}
 	
