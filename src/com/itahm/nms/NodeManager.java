@@ -22,6 +22,7 @@ import org.snmp4j.smi.OctetString;
 import org.snmp4j.smi.Variable;
 import org.snmp4j.transport.DefaultUdpTransportMapping;
 
+import com.itahm.nms.NodeEventReceivable;
 import com.itahm.nms.node.Event;
 import com.itahm.nms.node.ICMPNode;
 import com.itahm.nms.node.Node;
@@ -114,12 +115,10 @@ public class NodeManager extends Snmp implements Listener, Closeable {
 		System.out.println("NodeManager down.");
 	}
 	
-	private void createNode(long id, Node node) throws IOException {
+	private Node createNode(long id, Node node) throws IOException {
 		if (NMS.LIMIT > 0 && this.nodeMap.size() >= NMS.LIMIT) {
 			throw new IOException(String.format("Your license [%d] is limited", NMS.LIMIT));
 		}
-		
-		this.nodeMap.put(id, node);
 		
 		node.addEventListener(this);
 		
@@ -127,6 +126,8 @@ public class NodeManager extends Snmp implements Listener, Closeable {
 		node.setTimeout(this.timeout);
 		
 		node.ping(0);
+		
+		return this.nodeMap.put(id, node);
 	}
 	
 	/**
@@ -139,14 +140,14 @@ public class NodeManager extends Snmp implements Listener, Closeable {
 	 * @param level
 	 * @throws IOException
 	 */
-	public void createSNMPNode(long id, String ip, int port, String version, String security, int level) throws IOException {
+	public Node createSNMPNode(long id, String ip, int port, String version, String security, int level) throws IOException {
 		switch(version) {
 		case "v3":
-			createNode(id, new SNMPV3Node(this, id, ip, port, security, level));
+			return createNode(id, new SNMPV3Node(this, id, ip, port, security, level));
 		case "v2c":
-			createNode(id, new SNMPDefaultNode(this, id, ip, port, security, SnmpConstants.version2c));
+			return createNode(id, new SNMPDefaultNode(this, id, ip, port, security, SnmpConstants.version2c));
 		default:
-			createNode(id, new SNMPDefaultNode(this, id, ip, port, security, SnmpConstants.version1));
+			return createNode(id, new SNMPDefaultNode(this, id, ip, port, security, SnmpConstants.version1));
 		}
 	}
 	
@@ -157,12 +158,12 @@ public class NodeManager extends Snmp implements Listener, Closeable {
 	 * @param protocol
 	 * @throws IOException
 	 */
-	public void createSimpleNode(long id, String ip, String protocol) throws IOException {
+	public Node createSimpleNode(long id, String ip, String protocol) throws IOException {
 		switch (protocol.toUpperCase()) {
 		case "ICMP":
-			createNode(id, new ICMPNode(id, ip));
+			return createNode(id, new ICMPNode(id, ip));
 		case "TCP":
-			createNode(id, new TCPNode(id, ip));
+			return createNode(id, new TCPNode(id, ip));
 		default:
 			throw new IOException(String.format("Not supported protocol [%s]", protocol));
 		}
@@ -177,47 +178,38 @@ public class NodeManager extends Snmp implements Listener, Closeable {
 		}
 		
 		if (caller instanceof Node) {
+			Node node = (Node)caller;
+			
 			switch ((Event)args[0]) {
 			case CLOSE:
 				
 				break;
 			case PING:
-				onPingEvent((Node)caller, (long)args[1]);
+				long rtt = (long)args[1];
+				
+				this.agent.informPingEvent(node.id, rtt, (boolean)args[2]);
+				
+				node.ping(rtt > -1? this.interval: 0);
 				
 				break;
 			case SNMP:
-				onSNMPEvent((Node)caller, args[1]);
+				if (args[1] instanceof Exception) {
+					((Exception)args[1]).printStackTrace();
+				} else {
+					this.agent.informSNMPEvent(node.id, (int)args[1], (boolean)args[2]);
+				}
 				
 				break;
 			case RESOURCE:
-				onResourceEvent((Node)caller, (OID)args[1], (OID)args[2], (Variable)args[3]);
+				this.agent.informResourceEvent(node.id, (OID)args[1], (OID)args[2], (Variable)args[3]);
 				
 				break;
 			}
 		}
 		else if (caller instanceof SeedNode) {
-			SeedNode seedNode = (SeedNode)caller;
+			SeedNode node = (SeedNode)caller;
 			
-			this.agent.informTestEvent(seedNode.id, seedNode.ip, (Protocol)args[0], args[1]);
-		}
-	}
-	
-	private void onPingEvent(Node node, long rtt) {
-		this.agent.informPingEvent(node.id, rtt,
-			node instanceof ICMPNode? "icmp": node instanceof TCPNode? "tcp": "");
-		
-		node.ping(rtt > -1? this.interval: 0);
-	}
-	
-	private void onResourceEvent(Node node, OID oid, OID index, Variable variable) {
-		this.agent.informResourceEvent(node.id, oid, index, variable);
-	}
-
-	private void onSNMPEvent(Node node, Object code) {
-		if (code instanceof Exception) {
-			((Exception)code).printStackTrace();
-		} else if (code instanceof Integer){
-			this.agent.informSNMPEvent(node.id, (int)code);
+			this.agent.informTestEvent(node.id, node.ip, (Protocol)args[0], args[1]);
 		}
 	}
 	

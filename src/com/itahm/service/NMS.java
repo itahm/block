@@ -13,6 +13,7 @@ import com.itahm.json.JSONException;
 import com.itahm.json.JSONObject;
 import com.itahm.nms.Commander;
 import com.itahm.nms.H2Agent;
+//import com.itahm.nms.H2Agent;
 import com.itahm.smtp.SMTP;
 import com.itahm.util.Listener;
 
@@ -251,7 +252,7 @@ public class NMS implements Serviceable, Listener {
 			
 			break;
 		case "LINK":
-			if (!this.agent.addLink(request.getLong("nodeFrom"), request.getLong("nodeTo"))) {
+			if (!this.agent.addLink(request.getLong("path"))) {
 				response.setStatus(Response.Status.CONFLICT);
 			}
 			break;
@@ -390,7 +391,7 @@ public class NMS implements Serviceable, Listener {
 			
 			break;
 		case "LINK":
-			if (!this.agent.setLink(request.getLong("nodeFrom"), request.getLong("nodeTo"),request.getJSONObject("link"))) {
+			if (!this.agent.setLink(request.getJSONObject("link"))) {
 				response.setStatus(Response.Status.CONFLICT);
 			}
 			
@@ -414,7 +415,7 @@ public class NMS implements Serviceable, Listener {
 			
 			break;
 		case "PATH":
-			if (!this.agent.setPath(request.getLong("nodeFrom"), request.getLong("nodeTo"), request.getJSONObject("path"))) {
+			if (!this.agent.setPath(request.getJSONObject("path"))) {
 				response.setStatus(Response.Status.CONFLICT);
 			}
 			
@@ -511,7 +512,7 @@ public class NMS implements Serviceable, Listener {
 			
 			break;
 		case "PATH":
-			if (!this.agent.removePath(request.getLong("nodeFrom"), request.getLong("nodeTo"))) {
+			if (!this.agent.removePath(request.getLong("id"))) {
 				response.setStatus(Response.Status.CONFLICT);
 			}
 			
@@ -591,8 +592,8 @@ public class NMS implements Serviceable, Listener {
 			
 			return result;
 		case "LINK":
-			return request.has("nodeFrom")?
-				this.agent.getLink(request.getLong("nodeFrom"), request.getLong("nodeTo")):
+			return request.has("path")?
+				this.agent.getLink(request.getLong("path")):
 				this.agent.getLink();
 		case "LOCATION":
 			return request.has("node")?
@@ -603,7 +604,7 @@ public class NMS implements Serviceable, Listener {
 		case "NODE":
 			return request.has("id")?
 				this.agent.getNode(request.getLong("id"), request.has("resource") && request.getBoolean("resource")):
-				this.agent.getNode(request.has("filter")? request.getString("filter"): null);
+				this.agent.getNode();
 		case "PATH":
 			return request.has("nodeFrom")?
 				this.agent.getPath(request.getLong("nodeFrom"), request.getLong("nodeTo")):
@@ -619,11 +620,21 @@ public class NMS implements Serviceable, Listener {
 				this.agent.getRack(request.getInt("id")):
 				this.agent.getRack();
 		case "RESOURCE":
-			return  this.agent.getResource(request.getLong("id"),
-					request.getInt("index"),
-					request.getString("oid"),
-					request.getLong("date"),
-					request.has("summary")? request.getBoolean("summary"): false);
+			return  
+				request.has("date")?
+					this.agent.getResource(request.getLong("id"),
+						request.getString("index"),
+						request.getString("oid"),
+						request.getLong("date")):
+				request.has("from") && request.has("to")?
+					this.agent.getResource(request.getLong("id"),
+						request.getString("index"),
+						request.getString("oid"),
+						request.getLong("from"),
+						request.getLong("to")):
+					this.agent.getResource(request.getLong("id"),
+						request.getString("index"),
+						request.getString("oid"));
 		case "SETTING":
 			return request.has("key")?
 				this.agent.getSetting(request.getString("key")):

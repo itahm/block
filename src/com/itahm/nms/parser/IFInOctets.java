@@ -2,6 +2,7 @@ package com.itahm.nms.parser;
 
 import java.util.Map;
 
+import com.itahm.nms.Bean.Counter;
 import com.itahm.nms.Bean.CriticalEvent;
 import com.itahm.nms.Bean.Max;
 import com.itahm.nms.Bean.Value;
@@ -13,7 +14,6 @@ import java.util.HashMap;
 import java.util.List;
 
 public class IFInOctets implements Parseable {
-	private final Map<Long, Map<Integer, Value>> oldMap = new HashMap<>();
 	private final Map<Long, Max> publicMax = new HashMap<>();
 	private final Map<Long, Max> max = new HashMap<>();
 	private final Map<Long, Max> publicMaxRate = new HashMap<>();
@@ -22,101 +22,95 @@ public class IFInOctets implements Parseable {
 	@Override
 	public CriticalEvent parse(long id, String idx, Map<String, Value> oidMap) {
 		long speed = 0;
-		Value v;
-		Map<Integer, Value> oldIndexMap = this.oldMap.get(id);
+		Value v = oidMap.get("1.3.6.1.4.1.49447.3.5");
 		
-		if (oldIndexMap == null) {
-			this.oldMap.put(id, oldIndexMap = new HashMap<Integer, Value>());
+		if (v == null) {
+			v = oidMap.get("1.3.6.1.2.1.31.1.1.1.15");
+			
+			if (v == null) {
+				v = oidMap.get("1.3.6.1.2.1.2.2.1.5");
+				
+				if (v == null) {
+					return null;
+				} else {
+					speed = Long.valueOf(v.value);		
+				}
+			} else {
+				speed = Long.valueOf(v.value) *1000000L;	
+			}
+		} else {
+			speed = Long.valueOf(v.value);
 		}
 		
-		if ((v = oidMap.get("1.3.6.1.4.1.49447.3.5")) != null) {
-			speed = Long.valueOf(v.value);
-		} else if ((v = oidMap.get("1.3.6.1.2.1.31.1.1.1.15")) != null) {
-			speed = Long.valueOf(v.value) *1000000L;
-		} else if ((v = oidMap.get("1.3.6.1.2.1.2.2.1.5")) != null) {
-			speed = Long.valueOf(v.value);
+		if (speed <= 0) {
+			return null;
 		}
 		
-		if (speed > 0) {
+		v = oidMap.get("1.3.6.1.2.1.31.1.1.1.6");
+		
+		if (v == null) {
 			v = oidMap.get("1.3.6.1.2.1.2.2.1.10");
+		}
 			
-			if (v != null) {
-				int index;
-				long octets;
+		if (v == null || !(v instanceof Counter)) {
+			return null;
+		}
+		
+		int index;
+		
+		try {
+			index = Integer.valueOf(idx);
+		} catch (NumberFormatException nfe) {
+			return null;
+		}
+		
+		Long bps = ((Counter)v).counter();
+		
+		if (bps == null) {
+			return null;
+		}
+		
+		bps *= 8;
+		
+		Max max = this.max.get(id);
+		Value bpsValue = oidMap.get("1.3.6.1.4.1.49447.3.1");
+		
+		if (max == null || Long.valueOf(max.value) < bps) {
+			this.max.put(id, new Max(id, index, Long.toString(bps), bps *100 / speed));
+		}
+		
+		max = this.maxRate.get(id);
+		
+		if (max == null || max.rate < bps *100 / speed) {
+			this.maxRate.put(id, new Max(id, index, Long.toString(bps), bps *100 / speed));
+		}
+		
+		if (bpsValue == null) {
+			bpsValue = new Value();
+			
+			oidMap.put("1.3.6.1.4.1.49447.3.1", bpsValue);
+		}
+		
+		bpsValue.set(v.timestamp, Long.toString(bps));
+		
+		if (v.limit > 0) {
+			boolean critical = bps *100 / speed > v.limit;
+		
+			if (v.critical != critical) {
+				v.critical = critical;
 				
-				try {
-					index = Integer.valueOf(idx);
-				} catch (NumberFormatException nfe) {
-					return null;
-				}
-				
-				try {
-					octets = Long.valueOf(v.value);
-				} catch (NumberFormatException nfe) {
-					return null;
-				}
-				
-				Long bps = parseBPS(id, oldIndexMap.get(index), speed, octets, v.timestamp);
-				
-				oldIndexMap.put(index, new Value(v.timestamp, v.value));
-				
-				if (bps != null) {
-					Max max = this.max.get(id);
-					Value bpsValue = oidMap.get("1.3.6.1.4.1.49447.3.1");
-					
-					if (max == null || Long.valueOf(max.value) < bps) {
-						this.max.put(id, new Max(id, index, Long.toString(bps), bps *100 / speed));
-					}
-					
-					max = this.maxRate.get(id);
-					
-					if (max == null || max.rate < bps *100 / speed) {
-						this.maxRate.put(id, new Max(id, index, Long.toString(bps), bps *100 / speed));
-					}
-					
-					if (bpsValue == null) {
-						oidMap.put("1.3.6.1.4.1.49447.3.1", new Value(v.timestamp, Long.toString(bps)));
-					} else {						
-						bpsValue.timestamp = v.timestamp;
-						bpsValue.value = Long.toString(bps);
-					}
-					
-					if (v.limit > 0) {
-						boolean critical = bps *100 / speed > v.limit;
-					
-						if (v.critical != critical) {
-							v.critical = critical;
-							
-							return new CriticalEvent(id, idx, "1.3.6.1.2.1.2.2.1.10", critical,
-								String.format("수신 %d%%", bps *100 / speed));
-						}
-					} else if (v.critical) {
-						v.critical = false;
-						
-						return new CriticalEvent(id, idx, "1.3.6.1.2.1.2.2.1.10", false,
-							String.format("수신 %d%%", bps *100 / speed));
-					}
-				}
+				return new CriticalEvent(id, idx, "1.3.6.1.2.1.2.2.1.10", critical,
+					String.format("수신 %d%%", bps *100 / speed));
 			}
+		} else if (v.critical) {
+			v.critical = false;
+			
+			return new CriticalEvent(id, idx, "1.3.6.1.2.1.2.2.1.10", false,
+				String.format("수신 %d%%", bps *100 / speed));
 		}
 		
 		return null;
 	}
-	
-	private Long parseBPS(long id, Value old, long speed, long octets, long timestamp) {
-		if (old != null) {
-			long diff = timestamp - old.timestamp;
-			
-			if (diff > 0) {
-				octets -= Long.valueOf(old.value);
-				
-				return octets >= 0? (octets *8000 / diff) : null;
-			}
-		}
-		
-		return null;
-	}
-
 
 	@Override
 	public List<Max> getTop(int count, boolean byRate) {

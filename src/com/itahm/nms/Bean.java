@@ -1,5 +1,7 @@
 package com.itahm.nms;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.Calendar;
 
 import com.itahm.json.JSONObject;
@@ -11,12 +13,97 @@ public class Bean {
 		public int limit = 0;
 		public boolean critical = false;
 		
-		public Value () {
-		}
-		
-		public Value (long timestamp, String value) {
+		protected void put(long timestamp, String value) {
 			this.timestamp = timestamp;
 			this.value = value;
+		}
+		
+		public void set(long timestamp, String value) {
+			put(timestamp, value);
+		}
+	}
+	
+	public static class Rollable extends Value {
+		private BigDecimal avg = new BigDecimal(0);
+		private long max = 0;
+		private long min = 0;
+		private int count = 0;
+	
+		@Override
+		public void set(long timestamp, String value) {
+			super.put(timestamp, value);
+			
+			try {
+				set(Long.valueOf(value));
+			} catch (NumberFormatException nfe) {}
+		}
+		
+		protected void set(long value) {
+			if (this.count == 0) {
+				this.avg = new BigDecimal(this.min = this.max = value);
+			} else {
+				this.max = Math.max(this.max, value);
+				this.min = Math.min(this.min, value);
+				this.avg = this.avg.multiply(new BigDecimal(this.count))
+					.add(new BigDecimal(value))
+					.divide(new BigDecimal(this.count +1), 10, RoundingMode.HALF_EVEN);
+			}
+			
+			this.count++;
+		}
+		
+		public long min() {
+			return this.min;
+		}
+		
+		public long avg() {
+			return this.avg.longValue();
+		}
+		
+		public long max() {
+			return this.max;
+		}
+		
+		public void clear() {
+			this.count = 0;
+			this.max = 0;
+			this.min = 0;
+			this.avg = new BigDecimal(0);
+		}
+	}
+	
+	public static class Counter extends Rollable {
+		private Long counter;
+		private long old;
+		private Long before;
+		
+		public Counter() {
+			super();
+		}
+		
+		@Override
+		public void set(long timestamp, String value) {
+			super.put(timestamp, value);
+			
+			if (this.before != null && timestamp != this.before) {
+				long diff = Long.valueOf(value) - this.old;
+				
+				if (diff >= 0) {
+					this.counter = new BigDecimal(diff)
+						.multiply(new BigDecimal(1000))
+						.divide(new BigDecimal(timestamp - this.before), RoundingMode.HALF_UP)
+						.longValue();
+					
+					super.set(this.counter);
+				}
+			}
+			
+			this.before = timestamp;
+			this.old = Long.valueOf(value);
+		}
+		
+		public Long counter() {
+			return this.counter;
 		}
 	}
 	
@@ -39,13 +126,33 @@ public class Bean {
 	}
 	
 	public static class Rule {
+		enum Rolling {
+			OTHER, GAUGE, COUNTER
+		};
+		
+		public final static byte OTHER = 0;
+		public final static byte GAUGE = 1;
+		public final static byte COUNTER = 2;
+		
 		public final String oid;
 		public final String name;
 		public final String syntax;
-		public final boolean rolling;
+		public final Rolling rolling;
 		public final boolean onChange;
 		
-		public Rule(String oid, String name, String syntax, boolean rolling, boolean onChange) {
+		public Rule(String oid, String name, String syntax) {
+			this(oid, name, syntax, Rolling.OTHER, false);
+		}
+		
+		public Rule(String oid, String name, String syntax, boolean onChange) {
+			this(oid, name, syntax, Rolling.OTHER, onChange);
+		}
+		
+		public Rule(String oid, String name, String syntax, Rolling rolling) {
+			this(oid, name, syntax, rolling, false);
+		}
+		
+		public Rule(String oid, String name, String syntax, Rolling rolling, boolean onChange) {
 			this.oid = oid;
 			this.name = name;
 			this.syntax = syntax;

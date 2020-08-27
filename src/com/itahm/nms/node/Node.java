@@ -16,6 +16,7 @@ abstract public class Node implements Runnable, Closeable, Listenable {
 	protected int timeout = 5000;
 	protected int retry = 1;
 	protected final Thread thread;
+	private Boolean status;
 	private final BlockingQueue<Long> queue = new LinkedBlockingQueue<>();
 	private final ArrayList<Listener> listenerList = new ArrayList<>();
 	
@@ -58,7 +59,7 @@ abstract public class Node implements Runnable, Closeable, Listenable {
 						sent = System.currentTimeMillis();
 						
 						if (isReachable()) {
-							fireEvent(Event.PING, System.currentTimeMillis() - sent);
+							fireEvent(System.currentTimeMillis() - sent);
 							
 							continue loop;
 						}
@@ -67,11 +68,26 @@ abstract public class Node implements Runnable, Closeable, Listenable {
 					}
 				}
 				
-				fireEvent(Event.PING, Long.valueOf(-1));
+				fireEvent(Long.valueOf(-1));
 			} catch (InterruptedException ie) {
 				break;
 			}
 		}
+	}
+	
+	private void fireEvent(long rtt) {
+		boolean status = rtt > -1;
+		boolean issue = false;
+		
+		if (this.status == null) {
+			this.status = status;
+		} else if (this.status != status) {
+			this.status = status;
+			
+			issue = true;
+		}
+		
+		fireEvent(Event.PING, rtt, issue);
 	}
 	
 	@Override
