@@ -37,7 +37,7 @@ abstract public class AbstractParser implements Parseable {
 						return -1;
 					}
 					else {
-						return 1;
+						return 0;
 					}
 				} else if (max2 == null) {
 					return -1;
@@ -68,7 +68,7 @@ abstract public class AbstractParser implements Parseable {
 	}
 	
 	@Override
-	public void reset(long id) {
+	public void reset(long id) {//new Exception().printStackTrace();
 		this.publicMax.remove(id);
 	}
 

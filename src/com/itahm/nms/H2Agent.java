@@ -2520,7 +2520,9 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 			
 		}
 		else {
-			Parser.RESPONSETIME.getInstance().reset(id);
+			for (Parser parser : Parser.values()) {
+				parser.getInstance().reset(id);
+			}
 		}
 		
 		if (issue) {
