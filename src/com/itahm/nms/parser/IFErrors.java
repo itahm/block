@@ -28,8 +28,8 @@ abstract public class IFErrors extends AbstractParser {
 				Max max = this.max.get(id);
 				Value cpsValue = oidMap.get(getCPSOID());
 				
-				if (max == null || Long.valueOf(max.value) < cps) {
-					this.max.put(id, new Max(id, index, Long.toString(cps)));
+				if (max == null || max.value < cps) {
+					this.max.put(id, new Max(id, index, cps));
 				}
 				
 				if (cpsValue == null) {

@@ -5,6 +5,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.sql.Connection;
+import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -29,11 +30,7 @@ public class Batch extends Timer {
 		" t_rolling"+
 		" (id, oid, _index, value, timestamp)"+
 		" VALUES (?, ?, ?, ?, ?);";
-	private final String SQL_INSERT = "INSERT INTO"+
-		" t_summary"+
-		" (node, oid, _index, max, avg, min, timestamp)"+
-		" VALUES (?, ?, ?, ?, ?, ?, ?);";
-	private final String SQL_MERGE = "MERGE INTO"+
+	private final String SQL_SUMMARY = "MERGE INTO"+
 		" t_summary"+
 		" (node, oid, _index, max, avg, min, timestamp)"+
 		" KEY (node, oid, _index, timestamp)"+
@@ -122,7 +119,7 @@ public class Batch extends Timer {
 					" (id BIGINT NOT NULL"+
 					", oid VARCHAR NOT NULL"+
 					", _index VARCHAR NOT NULL"+
-					", value VARCHAR NOT NULL"+
+					", value BIGINT NOT NULL"+
 					", timestamp BIGINT DEFAULT NULL);");
 			}
 		}
@@ -153,28 +150,54 @@ public class Batch extends Timer {
 		createRollingTable();
 	}
 	
-	public Connection getCurrentConnection() throws SQLException {
-		return this.connPool.getConnection();
+	public JSONObject getData(long id, String index, String oid, long date) {
+		Calendar calendar = Calendar.getInstance();
+		JSONObject result = new JSONObject();
+		int year = calendar.get(Calendar.YEAR);
+		int day = calendar.get(Calendar.DAY_OF_YEAR);
+		
+		calendar.setTimeInMillis(date);
+		
+		try (Connection c = year == calendar.get(Calendar.YEAR) && day == calendar.get(Calendar.DAY_OF_YEAR)?
+			this.connPool.getConnection():
+			DriverManager.getConnection(
+			String.format("jdbc:h2:%s\\%04d-%02d-%02d;ACCESS_MODE_DATA=r;IFEXISTS=TRUE;",
+				this.path.toString(),
+				calendar.get(Calendar.YEAR),
+				calendar.get(Calendar.MONTH) +1,
+				calendar.get(Calendar.DAY_OF_MONTH)), "sa", "")) {
+			
+			try (PreparedStatement pstmt = c.prepareStatement("SELECT"+
+				" value, timestamp"+
+				" FROM t_rolling"+
+				" WHERE id=? AND _index=? AND oid=?;")) {
+				pstmt.setLong(1, id);
+				pstmt.setString(2, index);
+				pstmt.setString(3, oid);
+				
+				try (ResultSet rs = pstmt.executeQuery()) {
+					while (rs.next()) {
+						result.put(Long.toString(rs.getLong(2)), rs.getLong(1));
+					}
+				}
+			}
+		} catch (SQLException sqle) {
+		}
+		
+		return result;
 	}
 	
 	public JSONObject getSummary(long id, String index, String oid, long from, long to) {
 		try (Connection c = this.summaryPool.getConnection()) {
-			/*try (PreparedStatement pstmt = c.prepareStatement("delete"+
-					" from t_summary"+
-					" WHERE min<0 OR avg<0")) {
-				
-					System.out.println(pstmt.executeUpdate());
-				}*/
 			try (PreparedStatement pstmt = c.prepareStatement("SELECT"+
 				" max, avg, min, timestamp"+
 				" FROM t_summary"+
-				//" WHERE node=? AND _index=? AND oid=? AND timestamp >= ? AND timestamp < ?;")) {
-				" WHERE node=? AND _index=? AND oid=?;")) {
+				" WHERE node=? AND _index=? AND oid=? AND timestamp >= ? AND timestamp < ?;")) {
 				pstmt.setLong(1, id);
 				pstmt.setString(2, index);
 				pstmt.setString(3, oid);
-				//pstmt.setLong(4, from);
-				//pstmt.setLong(5, to);
+				pstmt.setLong(4, from);
+				pstmt.setLong(5, to);
 				
 				try (ResultSet rs = pstmt.executeQuery()) {
 					JSONObject
@@ -245,7 +268,8 @@ public class Batch extends Timer {
 		remove();
 	}
 	
-	private void save1() {
+	/*
+	private void save() {
 		Map<String, Map<String, Value>> indexMap;
 		Map<String, Value> oidMap;
 		Value v;
@@ -260,150 +284,7 @@ public class Batch extends Timer {
 			try(Connection c1 = this.connPool.getConnection()) {
 				try (PreparedStatement pstmt1 = c1.prepareStatement(SQL_ROLLING)) {
 					try (Connection c2 = this.summaryPool.getConnection()) {
-						try (PreparedStatement pstmt2 = c2.prepareStatement("DELETE"+
-							" FROM t_summary"+
-							" WHERE timestamp=?;")) {
-							pstmt2.setLong(1, this.summaryTime);
-							
-							pstmt2.executeUpdate();
-						}
-						try (PreparedStatement pstmt2 = c2.prepareStatement(SQL_INSERT)) {
-							for (Long id: this.resourceMap.keySet()) {
-								pstmt1.setLong(1, id);
-								pstmt2.setLong(1, id);
-								
-								indexMap = this.resourceMap.get(id);
-								 
-								for (String index : indexMap.keySet()) {
-									pstmt1.setString(3, index);
-									pstmt2.setString(3, index);
-									
-									oidMap = indexMap.get(index);
-									 
-									for (String oid : oidMap.keySet()) {
-										pstmt1.setString(2, oid);
-										pstmt2.setString(2, oid);
-										
-										v = oidMap.get(oid);
-										 
-										if (v instanceof Rollable) {
-											r = (Rollable)v;
-											
-											pstmt1.setString(4, v.value);
-											pstmt1.setLong(5, v.timestamp);
-											pstmt1.addBatch();
-											
-											pstmt2.setLong(4, r.max());
-											pstmt2.setLong(5, r.avg());
-											pstmt2.setLong(6, r.min());
-											pstmt2.setLong(7, this.summaryTime);
-											pstmt2.addBatch();
-										}
-									}
-								 }
-							}
-							
-							pstmt1.executeBatch();
-							pstmt2.executeBatch();
-						}
-					}
-				}
-			} catch (SQLException sqle) {
-				sqle.printStackTrace();
-			} finally {System.out.format("SAVE1\t%dms\n", System.currentTimeMillis() - ttt);
-				if (System.currentTimeMillis() - ttt > 30000) {
-					new Exception().printStackTrace();
-				}
-			}
-		}
-	}
-	
-	private void save2() {
-		Map<String, Map<String, Value>> indexMap;
-		Map<String, Value> oidMap;
-		Value v;
-		Rollable r;
-
-		synchronized(this.connPool) {
-			if (this.connPool == null) {
-				return;
-			}
-
-			long ttt = System.currentTimeMillis();
-			try(Connection c1 = this.connPool.getConnection()) {
-				try (PreparedStatement pstmt1 = c1.prepareStatement(SQL_ROLLING)) {
-					try (Connection c2 = this.summaryPool.getConnection()) {
-						try (PreparedStatement pstmt2 = c2.prepareStatement("DELETE"+
-							" FROM t_summary"+
-							" WHERE timestamp=?;")) {
-							pstmt2.setLong(1, this.summaryTime);
-							
-							pstmt2.executeUpdate();
-						}
-						try (PreparedStatement pstmt2 = c2.prepareStatement(SQL_INSERT)) {
-							for (Long id: this.resourceMap.keySet()) {
-								pstmt1.setLong(1, id);
-								pstmt2.setLong(1, id);
-								
-								indexMap = this.resourceMap.get(id);
-								 
-								for (String index : indexMap.keySet()) {
-									pstmt1.setString(3, index);
-									pstmt2.setString(3, index);
-									
-									oidMap = indexMap.get(index);
-									 
-									for (String oid : oidMap.keySet()) {
-										pstmt1.setString(2, oid);
-										pstmt2.setString(2, oid);
-										
-										v = oidMap.get(oid);
-										 
-										if (v instanceof Rollable) {
-											r = (Rollable)v;
-											
-											pstmt1.setString(4, v.value);
-											pstmt1.setLong(5, v.timestamp);
-											pstmt1.executeUpdate();
-											
-											pstmt2.setLong(4, r.max());
-											pstmt2.setLong(5, r.avg());
-											pstmt2.setLong(6, r.min());
-											pstmt2.setLong(7, this.summaryTime);
-											pstmt2.executeUpdate();
-										}
-									}
-								 }
-							}
-						}
-					}
-				}
-			} catch (SQLException sqle) {
-				sqle.printStackTrace();
-			} finally {System.out.format("SAVE2\t%dms\n", System.currentTimeMillis() - ttt);
-				if (System.currentTimeMillis() - ttt > 30000) {
-					new Exception().printStackTrace();
-				}
-			}
-		}
-	}
-	
-	private void save3() {
-		Map<String, Map<String, Value>> indexMap;
-		Map<String, Value> oidMap;
-		Value v;
-		Rollable r;
-
-		synchronized(this.connPool) {
-			if (this.connPool == null) {
-				return;
-			}
-
-			long ttt = System.currentTimeMillis();
-			try(Connection c1 = this.connPool.getConnection()) {
-				try (PreparedStatement pstmt1 = c1.prepareStatement(SQL_ROLLING)) {
-					try (Connection c2 = this.summaryPool.getConnection()) {
-						try (PreparedStatement pstmt2 = c2.prepareStatement(SQL_MERGE)) {
+						try (PreparedStatement pstmt2 = c2.prepareStatement(SQL_SUMMARY)) {
 							for (Long id: this.resourceMap.keySet()) {
 								pstmt1.setLong(1, id);
 								pstmt2.setLong(1, id);
@@ -453,8 +334,8 @@ public class Batch extends Timer {
 			}
 		}
 	}
-	
-	private void save4() {
+	*/
+	private void save() {
 		Map<String, Map<String, Value>> indexMap;
 		Map<String, Value> oidMap;
 		Value v;
@@ -469,7 +350,7 @@ public class Batch extends Timer {
 			try(Connection c1 = this.connPool.getConnection()) {
 				try (PreparedStatement pstmt1 = c1.prepareStatement(SQL_ROLLING)) {
 					try (Connection c2 = this.summaryPool.getConnection()) {
-						try (PreparedStatement pstmt2 = c2.prepareStatement(SQL_MERGE)) {
+						try (PreparedStatement pstmt2 = c2.prepareStatement(SQL_SUMMARY)) {
 							for (Long id: this.resourceMap.keySet()) {
 								pstmt1.setLong(1, id);
 								pstmt2.setLong(1, id);
@@ -509,26 +390,11 @@ public class Batch extends Timer {
 				}
 			} catch (SQLException sqle) {
 				sqle.printStackTrace();
-			} finally {System.out.format("SAVE4\t%dms\n", System.currentTimeMillis() - ttt);
+			} finally {
 				if (System.currentTimeMillis() - ttt > 30000) {
 					new Exception().printStackTrace();
 				}
 			}
-		}
-	}
-	private int x = 0;
-	private void save() {
-		switch (x++ % 4) {
-		case 0:
-			save1(); break;
-		case 1:
-			save2(); break;
-		case 2:
-			save3(); break;
-		case 3:
-			save4();
-			
-			break;
 		}
 	}
 	

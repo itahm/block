@@ -12,14 +12,11 @@ import java.util.List;
 
 abstract public class AbstractParser implements Parseable {
 	
-	protected Map<Long, Max> publicMax = new HashMap<>();
-	protected Map<Long, Max> max = new HashMap<>();
+	protected Map<Long, Max> publicMax = new HashMap<>(); //submit 후 max
+	protected Map<Long, Max> max = new HashMap<>(); //submit 이전 max, submit 후 초기화 됨.
 
 	@Override
 	public List<Max> getTop(int count, boolean byRate) {
-		if (byRate) {
-			return null;
-		}
 		
 		final List<Long> keys = new ArrayList<>(this.publicMax.keySet());
 		List<Max> result = new ArrayList<>();
@@ -32,18 +29,19 @@ abstract public class AbstractParser implements Parseable {
 				Max max1 = publicMax.get(id1);
 				Max max2 = publicMax.get(id2);
 				
+				if (max1 == null && max2 == null) {
+					return 0;
+				}
+			
 				if (max1 == null) {
-					if (max2 == null) {
-						return -1;
-					}
-					else {
-						return 0;
-					}
-				} else if (max2 == null) {
+					return 1;
+				}
+				
+				if (max2 == null) {
 					return -1;
 				}
 				
-				long l = Long.valueOf(max2.value) - Long.valueOf(max1.value);
+				long l = max2.value - max1.value;
 				
 				return l > 0? 1: l < 0? -1: 0;
 			}
@@ -62,13 +60,15 @@ abstract public class AbstractParser implements Parseable {
 	
 	@Override
 	public void submit(long id) {
-		this.publicMax.put(id, this.max.get(id));
+		Max max = this.max.remove(id);
 		
-		this.max.remove(id);
+		if (max != null) {
+			this.publicMax.put(id, max);
+		}
 	}
 	
 	@Override
-	public void reset(long id) {//new Exception().printStackTrace();
+	public void reset(long id) {
 		this.publicMax.remove(id);
 	}
 

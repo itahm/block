@@ -35,8 +35,8 @@ public class ResponseTime extends AbstractParser {
 			
 			Max max = super.max.get(id);
 			
-			if (max == null || Long.valueOf(max.value) < rtt) {
-				super.max.put(id, new Max(id, index, Long.toString(rtt)));
+			if (max == null || max.value < rtt) {
+				super.max.put(id, new Max(id, index, rtt));
 			}
 			
 			if (v.limit > 0) {

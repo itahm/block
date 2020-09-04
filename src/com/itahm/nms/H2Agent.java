@@ -5,7 +5,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -120,7 +119,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 		ruleMap.put("1.3.6.1.2.1.25.2.3.1.4", new Rule("1.3.6.1.2.1.25.2.3.1.4", "hrStorageAllocationUnits", "INTEGER"));
 		ruleMap.put("1.3.6.1.2.1.25.2.3.1.5", new Rule("1.3.6.1.2.1.25.2.3.1.5", "hrStorageSize", "INTEGER"));
 		ruleMap.put("1.3.6.1.2.1.25.2.3.1.6", new Rule("1.3.6.1.2.1.25.2.3.1.6", "hrStorageUsed", "INTEGER", Rolling.GAUGE));
-		ruleMap.put("1.3.6.1.2.1.25.3.3.1.2", new Rule("1.3.6.1.2.1.25.3.3.1.2", "hrProcessorLoad", "INTEGER", Rolling.GAUGE));
+		ruleMap.put("1.3.6.1.2.1.25.3.3.1.2", new Rule("1.3.6.1.2.1.25.3.3.1.2", "hrProcessorLoad", "INTEGER"));
 		ruleMap.put("1.3.6.1.2.1.31.1.1.1.1", new Rule("1.3.6.1.2.1.31.1.1.1.1", "ifName", "DisplayString"));
 		ruleMap.put("1.3.6.1.2.1.31.1.1.1.6", new Rule("1.3.6.1.2.1.31.1.1.1.6", "ifHCInOctets", "Counter64", Rolling.COUNTER));
 		ruleMap.put("1.3.6.1.2.1.31.1.1.1.10", new Rule("1.3.6.1.2.1.31.1.1.1.10", "ifHCOutOctets", "Counter64", Rolling.COUNTER));
@@ -134,6 +133,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 		PDUManager.setPDU(ruleMap.keySet());
 		
 		ruleMap.put("1.3.6.1.4.1.49447.1", new Rule("1.3.6.1.4.1.49447.1", "responseTime", "INTEGER", Rolling.GAUGE));
+		ruleMap.put("1.3.6.1.4.1.49447.4", new Rule("1.3.6.1.4.1.49447.4", "cpu", "INTEGER", Rolling.GAUGE));
 		//ruleMap.put("1.3.6.1.4.1.49447.2", new Rule("1.3.6.1.4.1.49447.2", "lastResponse", "INTEGER"));
 		//ruleMap.put("1.3.6.1.4.1.49447.3.1", new Rule("1.3.6.1.4.1.49447.3.1", "inBPS", "INTEGER"));
 		//ruleMap.put("1.3.6.1.4.1.49447.3.2", new Rule("1.3.6.1.4.1.49447.3.2", "outBPS", "INTEGER"));
@@ -1709,7 +1709,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 				boolean status;
 				
 				try (ResultSet rs = stmt.executeQuery("SELECT"+
-					" N.id, N.name, N.type, ip, label, M.protocol, M.status, L.node"+
+					" N.id, N.name, N.type, ip, label, extra, M.protocol, M.status, L.node"+
 					" FROM t_node AS N"+
 					" LEFT JOIN t_monitor AS M"+
 					" ON N.id=M.id"+
@@ -1748,16 +1748,22 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 						value = rs.getString(6);
 						
 						if (!rs.wasNull()) {
+							node.put("extra", value);
+						}
+						
+						value = rs.getString(7);
+						
+						if (!rs.wasNull()) {
 							node.put("protocol", value);
 						}
 						
-						status = rs.getBoolean(7);
+						status = rs.getBoolean(8);
 						
 						if (!rs.wasNull()) {
 							node.put("status", status);
 						}
 						
-						rs.getLong(8);
+						rs.getLong(9);
 						
 						if (!rs.wasNull()) {
 							node.put("location", true);
@@ -1804,7 +1810,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 		long ttt = System.currentTimeMillis();
 		try (Connection c = this.connPool.getConnection()) {
 			try (PreparedStatement pstmt = c.prepareStatement("SELECT"+
-				" N.id, name, type, ip, label, M.protocol, M.status, profile, address, subaddr, phone, lat, lng"+
+				" N.id, name, type, ip, label, extra, M.protocol, M.status, profile, address, subaddr, phone, lat, lng"+
 				" FROM t_node AS N"+
 				" LEFT JOIN t_monitor AS M"+
 				" ON N.id = M.id"+
@@ -1820,54 +1826,70 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 						
 						node.put("id", rs.getLong(1));
 						
-						if (rs.getString(2) != null) {
-							node.put("name", rs.getString(2));
+						value = rs.getString(2);
+						
+						if (!rs.wasNull()) {
+							node.put("name", value);
 						}
 						
-						if (rs.getString(3) != null) {
-							node.put("type", rs.getString(3));
+						value = rs.getString(3);
+						
+						if (!rs.wasNull()) {
+							node.put("type", value);
 						}
 						
-						if (rs.getString(4) != null) {
-							node.put("ip", rs.getString(4));
+						value = rs.getString(4);
+						
+						if (!rs.wasNull()) {
+							node.put("ip", value);
 						}
 						
-						if (rs.getString(5) != null) {
-							node.put("label", rs.getString(5));
+						value = rs.getString(5);
+						
+						if (!rs.wasNull()) {
+							node.put("label", value);
 						}
 						
-						if (rs.getString(6) != null) {
-							node.put("protocol", rs.getString(6));
+						value = rs.getString(6);
+						
+						if (!rs.wasNull()) {
+							node.put("extra", value);
 						}
 						
-						status = rs.getBoolean(7);
+						value = rs.getString(7);
+						
+						if (!rs.wasNull()) {
+							node.put("protocol", value);
+						}
+						
+						status = rs.getBoolean(8);
 						
 						if (!rs.wasNull()) {
 							node.put("status", status);
 						}
 						
-						value = rs.getString(8);
+						value = rs.getString(9);
 						
 						if (!rs.wasNull()) {
 							node.put("profile", value);
 						}
 						
-						value = rs.getString(9);
+						value = rs.getString(10);
 						
 						if (!rs.wasNull()) {
 							JSONObject branch = new JSONObject();
 							
 							branch.put("address", value);
-							branch.put("subaddr", rs.getString(10));
-							branch.put("phone", rs.getString(11));
+							branch.put("subaddr", rs.getString(11));
+							branch.put("phone", rs.getString(12));
 							
-							value = rs.getString(12);
+							value = rs.getString(13);
 							
 							if (!rs.wasNull()) {
 								branch.put("lat", value);
 							}
 							
-							value = rs.getString(13);
+							value = rs.getString(14);
 							
 							if (!rs.wasNull()) {
 								branch.put("lng", value);
@@ -2228,40 +2250,7 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 	
 	@Override
 	public synchronized JSONObject getResource(long id, String index, String oid, long date) {
-		Calendar calendar = Calendar.getInstance();
-		JSONObject result = new JSONObject();
-		int year = calendar.get(Calendar.YEAR);
-		int day = calendar.get(Calendar.DAY_OF_YEAR);
-		
-		calendar.setTimeInMillis(date);
-		
-		try (Connection c = year == calendar.get(Calendar.YEAR) && day == calendar.get(Calendar.DAY_OF_YEAR)?
-			this.batch.getCurrentConnection():
-			DriverManager.getConnection(
-			String.format("jdbc:h2:%s\\%04d-%02d-%02d;ACCESS_MODE_DATA=r;IFEXISTS=TRUE;",
-				this.root.toString(),
-				calendar.get(Calendar.YEAR),
-				calendar.get(Calendar.MONTH) +1,
-				calendar.get(Calendar.DAY_OF_MONTH)), "sa", "")) {
-			
-			try (PreparedStatement pstmt = c.prepareStatement("SELECT"+
-				" value, timestamp"+
-				" FROM t_rolling"+
-				" WHERE id=? AND _index=? AND oid=?;")) {
-				pstmt.setLong(1, id);
-				pstmt.setString(2, index);
-				pstmt.setString(3, oid);
-				
-				try (ResultSet rs = pstmt.executeQuery()) {
-					while (rs.next()) {
-						result.put(Long.toString(rs.getLong(2)), rs.getString(1));
-					}
-				}
-			}
-		} catch (SQLException sqle) {
-		}
-		
-		return result;
+		return this.batch.getData(id, index, oid, date);
 	}
 	
 	@Override
@@ -2567,12 +2556,20 @@ public class H2Agent implements Commander, NodeEventReceivable, Listener, Closea
 						if (ce != null) {
 							al.add(ce);
 						}
+					}
+					
+					if (parser instanceof HRProcessorLoad) {
+						HRProcessorLoad hrplp = (HRProcessorLoad)parser;
 						
-						if (parser instanceof HRProcessorLoad) {
-							Integer load = ((HRProcessorLoad)parser).getLoad(id);
+						Integer load = hrplp.getLoad(id);
+						
+						if (load != null) {
+							informResourceEvent(id, new OID("1.3.6.1.4.1.49447.4"), new OID("0"), new Integer32(load));
 							
-							if (load != null) {
-								informResourceEvent(id, new OID("1.3.6.1.2.1.25.3.3.1.2"), new OID("0"), new Integer32(load));
+							ce = hrplp.parse(id, load, indexMap.get("0"));
+							
+							if (ce != null) {
+								al.add(ce);
 							}
 						}
 					}

@@ -110,14 +110,14 @@ public class Bean {
 	public static class Max {
 		public final long id;
 		public final int index;
-		public final String value;
+		public final long value;
 		public final long rate;
 		
-		public Max (long id, int index, String value) {
+		public Max (long id, int index, long value) {
 			this(id,  index,  value, -1);
 		}
 		
-		public Max (long id, int index, String value, long rate) {
+		public Max (long id, int index, long value, long rate) {
 			this.id = id;
 			this.index = index;
 			this.value = value;
